@@ -131,6 +131,25 @@ type Env = Cloudflare.Env & {
 type StoredNonce = { value: string; expiresAt: number; stage: "initiation" | "oauth" };
 type StoredGrant = { accessToken: string; refreshToken?: string; expiresAt: number };
 
+/**
+ * When the Workshop should show these credentials as expired, or undefined if it should wait to be
+ * told.
+ *
+ * `complete()` and `credentialsRestored()` take the moment the credentials stop being
+ * *refreshable*, and their contract says not to pass the expiry of an access token the gatekeeper
+ * renews transparently. `StoredGrant.expiresAt` is exactly that -- Atlassian's access token, an
+ * hour -- so passing it made the Integrations page call the account expired an hour after every
+ * connect and every refresh, offering a Reconnect button for credentials that were fine, and a
+ * reconnect only restarted the hour.
+ *
+ * Atlassian's rotating refresh tokens do eventually expire, unlike Slack's, but it never says when,
+ * so while one is held the honest answer is "unknown": `refreshCredentials` calls `#notifyExpired`
+ * when Atlassian actually rejects it, and that is the real end of the credentials.
+ */
+function refreshabilityExpiry(grant: StoredGrant): Date | undefined {
+  return grant.refreshToken ? undefined : new Date(grant.expiresAt);
+}
+
 const getBaseUrl = (env: Env): string => env.BASE_URL || "http://localhost:8787/gatekeeper/confluence";
 const getBasePath = (env: Env): string => new URL(getBaseUrl(env)).pathname;
 
@@ -324,11 +343,12 @@ export class UserAccount extends DurableObject<Env> {
 
     if (this.ctx.storage.kv.get<boolean>("reconnecting")) {
       this.ctx.storage.kv.delete("reconnecting");
-      await callback.credentialsRestored(new Date(grant.expiresAt));
+      await callback.credentialsRestored(refreshabilityExpiry(grant));
     } else {
       try {
         const props: GatekeeperUserImplProps = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props }), new Date(grant.expiresAt));
+        await callback.complete(
+          this.ctx.exports.GatekeeperUserImpl({ props }), refreshabilityExpiry(grant));
       } catch (err) {
         this.ctx.storage.kv.delete("grant");
         throw err;
@@ -371,7 +391,7 @@ export class UserAccount extends DurableObject<Env> {
       const next = await refreshAccessToken(grant.refreshToken, this.env.CLIENT_ID, this.env.CLIENT_SECRET);
       this.#storeGrant(next); // rotating refresh token: always persist the new one
       const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
-      callback?.credentialsRestored(new Date(next.expiresAt)).catch(() => {});
+      callback?.credentialsRestored(refreshabilityExpiry(next)).catch(() => {});
       return next.accessToken;
     } catch (err) {
       if (err instanceof ConfluenceApiError && (err.isAuthError || err.status === 400 || err.status === 403)) {
