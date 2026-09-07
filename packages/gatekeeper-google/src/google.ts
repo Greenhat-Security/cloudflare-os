@@ -174,9 +174,13 @@ function isReadOnly(env: Env): boolean {
   return (env.READ_ONLY ?? "").trim().toLowerCase() === "true";
 }
 
+// The phrase "declined this call before running it" is load-bearing: the Workshop recognises it
+// (overseer.ts) as a call that never reached the provider, so an approval refused by this policy is
+// settled as rejected with the reason in chat, rather than held open as an unconfirmed write.
 const READ_ONLY_MESSAGE =
-    "This deployment's Google integration is read-only: agents can read Gmail, Calendar, Docs, " +
-    "Sheets, Drive and BigQuery but cannot send, edit, create or change anything.";
+    "This deployment's Google integration is read-only, so the gatekeeper declined this call " +
+    "before running it: agents can read Gmail, Calendar, Docs, Sheets, Drive and BigQuery but " +
+    "cannot send, edit, create or change anything.";
 
 function requireWritable(env: Env): void {
   if (isReadOnly(env)) throw new Error(READ_ONLY_MESSAGE);

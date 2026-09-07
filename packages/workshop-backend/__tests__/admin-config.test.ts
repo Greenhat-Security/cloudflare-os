@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ADMIN_CONFIG, defaultOutputFormatId, parseAdminConfig, reorderFormats, resolveFormatOutput, sanitizeOutputOverrides, serializeAdminConfig } from "../src/admin-config.js";
+import { DEFAULT_ADMIN_CONFIG, accountGrantIncludesDisabledResource, defaultOutputFormatId, gatekeeperAvailabilityBlock, normalizeResourceGrantSelection, parseAdminConfig, parseAdminConfigForAuthority, reorderFormats, resolveFormatOutput, sanitizeOutputOverrides, serializeAdminConfig } from "../src/admin-config.js";
 
 describe("parseAdminConfig", () => {
   it("backfills fields missing from a config persisted before they existed", () => {
@@ -115,5 +115,193 @@ describe("admin config site logo", () => {
     let config = parseAdminConfig('{"siteLogoConfigured":true}');
     expect(config.siteLogoConfigured).toBe(true);
     expect(parseAdminConfig(serializeAdminConfig(config))).toEqual(config);
+  });
+});
+
+describe("gatekeeper resource policy", () => {
+  const gmail = {
+    urlPattern: "https://mail.google.com/*",
+    title: "Gmail",
+    description: "Mail",
+    grantable: true,
+  };
+  const calendar = {
+    urlPattern: "https://calendar.google.com/calendar/:calendarId/*",
+    title: "Google Calendar",
+    description: "Calendar",
+    grantable: true,
+  };
+  const profile = {
+    urlPattern: "https://accounts.google.com/*",
+    title: "Google profile",
+    description: "Profile",
+  };
+  const config = {
+    ...DEFAULT_ADMIN_CONFIG,
+    disabledResources: { google: [calendar.urlPattern] },
+  };
+
+  it("normalizes vendor IDs and repeated resource patterns when parsing", () => {
+    let parsed = parseAdminConfig(JSON.stringify({
+      disabledResources: {
+        Google: [calendar.urlPattern, calendar.urlPattern],
+        google: [gmail.urlPattern],
+      },
+    }));
+
+    expect(parsed.disabledResources).toEqual({
+      google: [calendar.urlPattern, gmail.urlPattern],
+    });
+  });
+
+  it("fails closed when a present authority policy is malformed", () => {
+    expect(parseAdminConfigForAuthority(null)).toEqual(DEFAULT_ADMIN_CONFIG);
+    expect(() => parseAdminConfigForAuthority("not json")).toThrow(/policy is malformed/);
+    expect(() => parseAdminConfigForAuthority(JSON.stringify({
+      disabledResources: {google: calendar.urlPattern},
+    }))).toThrow(/resource policy is malformed/);
+    expect(() => parseAdminConfigForAuthority(JSON.stringify({
+      disabledGatekeepers: ["google", 7],
+    }))).toThrow(/gatekeeper policy is malformed/);
+    expect(() => parseAdminConfigForAuthority(JSON.stringify({
+      signupsEnabled: "false",
+    }))).toThrow(/signup policy is malformed/);
+    expect(() => parseAdminConfigForAuthority(JSON.stringify({
+      revision: -1,
+    }))).toThrow(/revision is malformed/);
+    expect(() => parseAdminConfigForAuthority(JSON.stringify({
+      revision: 1.5,
+    }))).toThrow(/revision is malformed/);
+  });
+
+  it("blocks retained ordinary, ambient, and legacy capabilities", () => {
+    expect(gatekeeperAvailabilityBlock(config, {
+      type: "gatekeeper",
+      vendorId: "Google",
+      resourceUrl: "https://calendar.google.com/calendar/team/",
+      typeUrlPattern: calendar.urlPattern,
+    })).toEqual({kind: "resource", vendorId: "google", urlPattern: calendar.urlPattern});
+
+    expect(gatekeeperAvailabilityBlock({
+      ...DEFAULT_ADMIN_CONFIG,
+      ambientGatekeeperModes: {scheduler: "disabled"},
+    }, {type: "ambient", vendorId: "scheduler", accountId: 1}))
+        .toEqual({kind: "gatekeeper", vendorId: "scheduler"});
+
+    expect(gatekeeperAvailabilityBlock(
+        config,
+        {type: "ambient", vendorId: "google", accountId: 1},
+        "https://calendar.google.com/calendar/team/events"))
+        .toEqual({kind: "resource", vendorId: "google", urlPattern: calendar.urlPattern});
+
+    expect(gatekeeperAvailabilityBlock(config, {
+      type: "gatekeeper",
+      vendorId: "Google",
+      resourceUrl: "https://calendar.google.com/calendar/team/events",
+      // Historical persisted records can predate this now-required field.
+    } as any)).toEqual({kind: "resource", vendorId: "google", urlPattern: calendar.urlPattern});
+
+    expect(gatekeeperAvailabilityBlock(config, {
+      type: "gatekeeper",
+      vendorId: "Google",
+      // A crash-window historical row can lack both fields.
+    } as any)).toEqual({kind: "resource", vendorId: "google", urlPattern: calendar.urlPattern});
+
+    expect(gatekeeperAvailabilityBlock(config, undefined))
+        .toEqual({kind: "resource", vendorId: "google", urlPattern: calendar.urlPattern});
+
+    expect(gatekeeperAvailabilityBlock(
+        config, undefined,
+        "https://calendar.google.com/calendar/u/0/r?cid=team%40greenhatsec.com"))
+        .toEqual({kind: "resource", vendorId: "google", urlPattern: calendar.urlPattern});
+  });
+
+  it("keeps unrelated and built-in capabilities enabled", () => {
+    expect(gatekeeperAvailabilityBlock(config, {
+      type: "gatekeeper",
+      vendorId: "google",
+      resourceUrl: "https://mail.google.com/mail/u/0/",
+      typeUrlPattern: gmail.urlPattern,
+    })).toBeUndefined();
+    expect(gatekeeperAvailabilityBlock(config, {
+      type: "aiModel", modelId: "m", provider: "p", modelName: "n",
+    })).toBeUndefined();
+  });
+
+  it("never governs a built-in binding by another vendor's resource pattern", () => {
+    // A model binding and the agent spawner carry a creation spec with no vendor, and their records
+    // stamp a placeholder resourceUrl. Matching those URLs against every vendor's disabled patterns
+    // would let one broad pattern (an MCP catalog that allows insecure endpoints publishes
+    // `http://*`) disable every model and spawner in the deployment.
+    let broad = {...DEFAULT_ADMIN_CONFIG, disabledResources: {mcp: ["http://*", "https://*"]}};
+    expect(gatekeeperAvailabilityBlock(broad, {
+      type: "aiModel", modelId: "glm-5.3", provider: "anthropic", modelName: "glm-5.3",
+    }, "http://models.local/anthropic/glm-5.3")).toBeUndefined();
+    expect(gatekeeperAvailabilityBlock(broad, {
+      type: "agentSpawner", config: {} as never,
+    }, "http://agent-spawner.local/")).toBeUndefined();
+    // The same pattern still blocks the vendor resource it was written for.
+    expect(gatekeeperAvailabilityBlock(broad, {
+      type: "gatekeeper", vendorId: "mcp",
+      resourceUrl: "https://gateway.example.com/mcp", typeUrlPattern: "https://*",
+    }, "https://gateway.example.com/mcp"))
+      .toEqual({kind: "resource", vendorId: "mcp", urlPattern: "https://*"});
+  });
+
+  it("quarantines ambiguous legacy records without shadowing modern specific resources", () => {
+    let slackChannel = "https://app.slack.com/client/:teamId/:conversationId";
+    let catchAllDisabled = {
+      ...DEFAULT_ADMIN_CONFIG,
+      disabledResources: {slack: ["https://*"]},
+    };
+
+    expect(gatekeeperAvailabilityBlock(catchAllDisabled, {
+      type: "gatekeeper",
+      vendorId: "slack",
+      resourceUrl: "https://app.slack.com/client/T123/C456",
+      typeUrlPattern: slackChannel,
+    })).toBeUndefined();
+    expect(gatekeeperAvailabilityBlock(
+        catchAllDisabled, undefined, "https://notion.so/team/page"))
+        .toEqual({kind: "resource", vendorId: "slack", urlPattern: "https://*"});
+    expect(gatekeeperAvailabilityBlock(
+        catchAllDisabled, undefined, "https://app.slack.com/client/T123/C456", "slack"))
+        .toEqual({kind: "resource", vendorId: "slack", urlPattern: "https://*"});
+
+    expect(gatekeeperAvailabilityBlock(
+        {...DEFAULT_ADMIN_CONFIG, disabledGatekeepers: ["google"]},
+        undefined,
+        "https://calendar.google.com/calendar/team/events"))
+        .toEqual({kind: "gatekeeper", vendorId: "google"});
+  });
+
+  it("narrows an omitted grant and rejects explicit disabled or non-grantable resources", () => {
+    let resources = [gmail, calendar, profile];
+    expect(normalizeResourceGrantSelection(
+        config, "Google", resources, undefined)).toEqual([gmail.urlPattern]);
+    expect(normalizeResourceGrantSelection(
+        DEFAULT_ADMIN_CONFIG, "google", resources, undefined)).toBeUndefined();
+    expect(normalizeResourceGrantSelection(
+        config, "google", resources, [gmail.urlPattern, gmail.urlPattern]))
+        .toEqual([gmail.urlPattern]);
+    expect(() => normalizeResourceGrantSelection(
+        config, "google", resources, [calendar.urlPattern])).toThrow(/disabled/);
+    expect(() => normalizeResourceGrantSelection(
+        config, "google", resources, [profile.urlPattern])).toThrow(/non-grantable/);
+
+    // A provider may return a user-specific or stale catalog which omits Calendar. Policy still
+    // forces an explicit Gmail-only selection; `undefined` would mean "grant everything".
+    expect(normalizeResourceGrantSelection(
+        config, "google", [gmail], undefined)).toEqual([gmail.urlPattern]);
+  });
+
+  it("detects legacy or explicit grants that include a newly-disabled resource", () => {
+    expect(accountGrantIncludesDisabledResource(
+        config, "google", undefined)).toBe(true);
+    expect(accountGrantIncludesDisabledResource(
+        config, "google", [calendar.urlPattern])).toBe(true);
+    expect(accountGrantIncludesDisabledResource(
+        config, "google", [gmail.urlPattern])).toBe(false);
+    // The account grant is authoritative; no live provider catalog is needed to retain the block.
   });
 });

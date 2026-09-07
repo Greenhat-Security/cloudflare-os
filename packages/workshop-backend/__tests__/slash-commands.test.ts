@@ -5,6 +5,7 @@ import type {
 import {
   collectSlashCommands, invokeSlashCommand,
 } from "../src/slash-commands";
+import {overseerTestInternals} from "../src/overseer.js";
 
 function rpcPromise<T>(promise: Promise<T>, onDispose?: () => void): Promise<T> & Disposable {
   return Object.assign(promise, {[Symbol.dispose]() { onDispose?.(); }});
@@ -130,5 +131,55 @@ describe("slash command helpers", () => {
     release([deploy]);
     await expect(result).resolves.toHaveLength(1);
     expect(disposals).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not release a command result when its resource is disabled in flight", async () => {
+    let release!: (result: SlashCommandResult) => void;
+    let value = gatekeeper({
+      invoke: () => new Promise<SlashCommandResult>(resolve => { release = resolve; }),
+    });
+    let enabled = true;
+    let request = {
+      id: {gatekeeperId: 1, commandId: "deploy"},
+      args: "production",
+    };
+    let pending = overseerTestInternals.invokeSlashCommandWithRevalidation(
+        value as never,
+        request,
+        {} as never,
+        async () => { if (!enabled) throw new Error("Calendar is disabled."); });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    enabled = false;
+    release({message: "private provider result"});
+
+    await expect(pending).rejects.toThrow("Slash command is no longer available.");
+  });
+
+  it("does not release a provider rejection when its resource is disabled in flight", async () => {
+    let reject!: (error: Error) => void;
+    let value = gatekeeper({
+      invoke: () => new Promise<SlashCommandResult>((_resolve, rejectPromise) => {
+        reject = rejectPromise;
+      }),
+    });
+    let enabled = true;
+    let pending = overseerTestInternals.invokeSlashCommandWithRevalidation(
+        value as never,
+        {id: {gatekeeperId: 1, commandId: "deploy"}, args: "production"},
+        {} as never,
+        async () => { if (!enabled) throw new Error("secret policy detail"); });
+    await vi.waitFor(() => expect(reject).toBeDefined());
+    enabled = false;
+    reject(Object.assign(new Error("private provider rejection"), {privateData: "secret"}));
+
+    let caught: any;
+    try {
+      await pending;
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught.message).toBe("Slash command is no longer available.");
+    expect(caught.privateData).toBeUndefined();
   });
 });
