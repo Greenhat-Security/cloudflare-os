@@ -642,12 +642,29 @@ export abstract class McpAccountBase<E extends AccountEnv, P = unknown>
 
     if (this.ctx.storage.kv.get<boolean>("reconnecting")) {
       this.ctx.storage.kv.delete("reconnecting");
-      const expiresAt = this.ctx.storage.kv.get<OAuthTokens>("tokens")?.expiresAt;
-      await callback.credentialsRestored(expiresAt ? new Date(expiresAt) : undefined);
+      await callback.credentialsRestored(this.refreshabilityExpiry());
     } else {
       await callback.complete(this.mintAccount());
     }
     await this.ctx.storage.deleteAlarm();
+  }
+
+  /**
+   * When the Workshop should show these credentials as expired, or undefined if it should wait to
+   * be told.
+   *
+   * `credentialsRestored` and `complete` want the moment the credentials stop being *refreshable*,
+   * and their contract says not to pass the expiry of an access token this side refreshes
+   * transparently. That is exactly what an OAuth access token is here -- an hour, typically -- so
+   * reporting it made the Integrations page call a reconnected account expired an hour later, for
+   * an account whose next call would have refreshed it silently. While there is a refresh token the
+   * honest answer is "unknown": `#performRefresh` reports `noteCredentialsExpired` when the
+   * authorization server finally rejects one, and that is the real end of the credentials.
+   */
+  private refreshabilityExpiry(): Date | undefined {
+    const tokens = this.ctx.storage.kv.get<OAuthTokens>("tokens");
+    if (!tokens || tokens.refresh_token) return undefined;
+    return tokens.expiresAt ? new Date(tokens.expiresAt) : undefined;
   }
 
 

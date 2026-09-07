@@ -8,8 +8,8 @@ import {
   stripTrailingSlashes,
 } from "@gadgets/workshop-shared/gatekeeper";
 import {
-  SlackApi, SlackApiError, SlackAccessToken, SlackConversationTypeFilter, exchangeAuthCode,
-  refreshAccessToken, revokeToken,
+  SlackApi, SlackApiError, SlackAccessToken, SlackConversationTypeFilter, SlackOAuthGrant,
+  exchangeAuthCode, refreshAccessToken, revokeToken,
 } from "./slack-api";
 import {
   SlackConversation, SlackConversationEntry, SlackConversationInfo, SlackMessage,
@@ -37,6 +37,26 @@ const NONCE_BYTES = 32;
 const INITIATION_NONCE_LIFETIME_MS = 10 * 60 * 1000;
 const OAUTH_NONCE_LIFETIME_MS = 10 * 60 * 1000;
 const ACCESS_TOKEN_EXPIRY_SAFETY_MS = 5 * 60 * 1000;
+
+/**
+ * When the Workshop should show these credentials as expired, or undefined if it should wait to be
+ * told.
+ *
+ * `complete()` and `credentialsRestored()` want the moment the credentials stop being
+ * *refreshable*, and their contract says explicitly not to pass the expiry of an access token the
+ * gatekeeper refreshes transparently. Slack's rotating grants pair a 12-hour user token with a
+ * refresh token that does not itself expire, so handing over the user token's expiry made the
+ * Workshop mark the account expired -- and ask for a reconnect -- twice a day, when the very next
+ * call would have refreshed it silently. With a refresh token in hand the honest answer is
+ * "unknown": `#getAccessTokenLocked` reports `credentialsExpired()` if Slack ever rejects the
+ * refresh, which is the real end of the credentials.
+ *
+ * A legacy non-rotating grant has no refresh token and no real expiry either; `expiryFrom` already
+ * gives it a century-away sentinel, so passing that through says the same thing.
+ */
+function refreshabilityExpiry(grant: SlackOAuthGrant): Date | undefined {
+  return grant.refreshToken ? undefined : grant.accessToken.expires;
+}
 
 function hexEncode(bytes: Uint8Array): string {
   return [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -421,12 +441,12 @@ export class UserAccount extends DurableObject<Env> {
     });
 
     if (completion.reconnecting) {
-      await completion.callback.credentialsRestored(completion.grant.accessToken.expires);
+      await completion.callback.credentialsRestored(refreshabilityExpiry(completion.grant));
     } else {
       try {
         let props: SlackUserImplProps = { userObjectId: this.ctx.id.toString() };
         await completion.callback.complete(
-            this.ctx.exports.SlackUserImpl({ props }), completion.grant.accessToken.expires);
+            this.ctx.exports.SlackUserImpl({ props }), refreshabilityExpiry(completion.grant));
       } catch (err) {
         await this.#updateCredentials(async () => {
           let storedToken = this.ctx.storage.kv.get<SlackAccessToken>("accessToken");
@@ -486,6 +506,15 @@ export class UserAccount extends DurableObject<Env> {
     if (result.grantedScopes.length > 0) {
       this.ctx.storage.kv.put<string[]>("grantedScopes", result.grantedScopes);
     }
+    // A successful refresh is proof the credentials are alive, so clear any expired state the
+    // Workshop is still showing. Without this a reconnect is the only way out of "Credentials
+    // expired", even for an account whose refresh token was fine all along -- which is where every
+    // account connected under the old expiry above is stuck right now. The Confluence gatekeeper
+    // announces its refreshes the same way. Best effort: the Workshop refuses this while an
+    // administrator has the integration disabled, and that refusal is its answer to give.
+    this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback")
+        ?.credentialsRestored()
+        .catch(err => console.error("Failed to notify Slack credential refresh:", err));
     return result.accessToken;
   }
 

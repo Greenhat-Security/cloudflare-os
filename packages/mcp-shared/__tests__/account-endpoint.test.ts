@@ -537,3 +537,49 @@ describe("resolveConnectTarget and a repointed deployment", () => {
       deployment("https://old.example/mcp"), server("https://evil.example/mcp"))).toBeNull();
   });
 });
+
+describe("the expiry the Workshop is told about", () => {
+  // `credentialsRestored`/`complete` take the moment the credentials stop being *refreshable*, and
+  // the contract says not to pass the expiry of an access token the gatekeeper refreshes itself.
+  // Passing it anyway made the Integrations page call a reconnected account "Credentials expired"
+  // an hour later -- the account still worked, the page just demanded a reconnect, and the only way
+  // to clear it was to reconnect, whereupon the same hour started again.
+  class TokenAccount extends McpAccountBase<AccountEnv> {
+    protected baseUrl(): string { return "https://gatekeeper.example"; }
+    protected log(): never { return testLog as never; }
+    protected mintAccount(): never { throw new Error("not reached"); }
+    protected override async probe(): Promise<never> { throw new Error("not probed"); }
+
+    reportedExpiry(): Date | undefined {
+      return (this as unknown as { refreshabilityExpiry(): Date | undefined })
+        .refreshabilityExpiry();
+    }
+  }
+
+  function accountWithTokens(tokens: unknown): TokenAccount {
+    const context = fakeContext();
+    context.storage.kv.put("server", { ...server("https://a.example/mcp"), auth: "oauth" });
+    if (tokens !== undefined) context.storage.kv.put("tokens", tokens);
+    return new TokenAccount(context as never, {});
+  }
+
+  it("says nothing while a refresh token can renew the access token", () => {
+    const inAnHour = Date.now() + 60 * 60 * 1000;
+    expect(accountWithTokens({
+      access_token: "at", token_type: "Bearer", refresh_token: "rt", expiresAt: inAnHour,
+    }).reportedExpiry()).toBeUndefined();
+  });
+
+  it("reports the access token's expiry when nothing can renew it", () => {
+    // Without a refresh token that expiry really is the end of the credentials, and saying so lets
+    // the page warn before a call fails.
+    const inAnHour = Date.now() + 60 * 60 * 1000;
+    expect(accountWithTokens({
+      access_token: "at", token_type: "Bearer", expiresAt: inAnHour,
+    }).reportedExpiry()).toEqual(new Date(inAnHour));
+  });
+
+  it("says nothing for an unauthenticated account", () => {
+    expect(accountWithTokens(undefined).reportedExpiry()).toBeUndefined();
+  });
+});
