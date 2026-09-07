@@ -410,45 +410,79 @@ export function abbreviateSchema(schema: JsonSchema, originalChars: number): Jso
   if (!isPlainObjectValue(schema.properties)) return undefined;
   const required = Array.isArray(schema.required)
     ? schema.required.filter((name): name is string => typeof name === "string") : [];
+  // A set, not `required.includes`: the sort comparator and the filter below both run per property,
+  // so a linear scan inside them makes an already large schema quadratic a second way.
+  const requiredSet = new Set(required);
   const names = Object.keys(schema.properties);
   // Required fields first, so trimming for size drops the optional tail.
-  names.sort((a, b) => Number(required.includes(b)) - Number(required.includes(a)));
+  names.sort((a, b) => Number(requiredSet.has(b)) - Number(requiredSet.has(a)));
   const summaries = new Map<string, AbbreviatedProperty>();
   for (const name of names) {
     const property = schema.properties[name];
     summaries.set(name, isPlainObjectValue(property) ? abbreviateProperty(property) : { schema: {} });
   }
-  const build = (withProse: boolean): JsonSchema => {
+  const build = (withProse: boolean, kept: readonly string[] = names): JsonSchema => {
     const properties: Record<string, JsonSchema> = {};
-    for (const [name, summary] of summaries) {
+    for (const name of kept) {
+      const summary = summaries.get(name);
+      if (!summary) continue;
       const description = [withProse ? summary.prose : undefined, summary.shape]
         .filter((part): part is string => part !== undefined).join(" ");
       properties[name] = { ...summary.schema, ...(description ? { description } : {}) };
     }
+    // `required` names only what survived. A schema that demands a field it does not declare is
+    // malformed, and on a schema whose fields are all required the full name list is itself most of
+    // the byte budget -- which is how an "abbreviation" could come out no smaller than the schema it
+    // replaced.
+    const keptRequired = kept.filter(name => requiredSet.has(name));
+    const dropped = names.length - kept.length;
     return {
       type: "object",
       description:
         `Abbreviated: the server's full schema (${originalChars} characters) is too large to ` +
         "include, so nested fields are described in prose. The server validates every call " +
-        "against the full schema and rejects unknown fields.",
+        "against the full schema and rejects unknown fields." +
+        (dropped > 0
+          ? ` Only ${kept.length} of ${names.length} top-level fields are listed; the other ` +
+            `${dropped} exist on the server and can still be passed.`
+          : ""),
       properties,
-      ...(required.length > 0 ? { required } : {}),
+      ...(keptRequired.length > 0 ? { required: keptRequired } : {}),
       ...(schema.additionalProperties !== undefined
         ? { additionalProperties: schema.additionalProperties } : {}),
     };
   };
-  let abbreviated = build(true);
+  const abbreviated = build(true);
   if (JSON.stringify(abbreviated).length <= MAX_ABBREVIATED_SCHEMA_CHARS) return abbreviated;
+
   // Still too big: drop the prose (the nested-field names stay, they are what an agent needs to
   // write a valid call), then optional properties from the end.
-  abbreviated = build(false);
-  const optionalNames = names.filter(name => !required.includes(name));
-  while (JSON.stringify(abbreviated).length > MAX_ABBREVIATED_SCHEMA_CHARS
-      && optionalNames.length > 0) {
-    summaries.delete(optionalNames.pop()!);
-    abbreviated = build(false);
+  //
+  // Binary search for the longest optional prefix that fits, rather than dropping one field at a
+  // time. Each drop rebuilt and re-serialised the whole schema, so a 2,000-field schema cost about
+  // 1,950 full passes -- quadratic, and enough to blow a 5-second test timeout on a CI runner. This
+  // runs on the listTools path for every oversized tool a connected server publishes, so the cost
+  // was paid against real catalogs too. Adding a property only ever makes the JSON longer, so "fits"
+  // is monotone in the count and the search is exact: about 11 passes for the same 2,000 fields.
+  // The search runs over every name, not just the optional ones, so the bound always holds. Stopping
+  // at the required fields meant a schema whose fields are all required came back over budget --
+  // 2,000 of them serialise to about 100 KiB against a 4,000-character bound, enough on its own to
+  // blow MAX_CATALOG_BYTES and cost the other tools their place in the catalog. `names` is sorted
+  // required-first, so a prefix of it drops the optional tail before it touches anything required.
+  let best = build(false, []);
+  let low = 0;
+  let high = names.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const candidate = build(false, names.slice(0, mid));
+    if (JSON.stringify(candidate).length <= MAX_ABBREVIATED_SCHEMA_CHARS) {
+      low = mid;
+      best = candidate;
+    } else {
+      high = mid - 1;
+    }
   }
-  return abbreviated;
+  return best;
 }
 
 // Trims one tool down to what is worth keeping, before it reaches storage or the agent. A schema too

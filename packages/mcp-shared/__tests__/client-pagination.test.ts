@@ -494,6 +494,43 @@ describe("McpClient.listTools", () => {
     expect(kept[0]).toBe("field0");
   });
 
+  it("abbreviates a very large schema without quadratic work", async () => {
+    // The trim used to drop one optional field per pass, rebuilding and re-serialising the whole
+    // schema each time: 2,000 fields cost ~1,950 passes, which timed out the test above on a CI
+    // runner and was paid on the listTools path for every oversized tool a server publishes. Ten
+    // times the fields is the guard -- a binary search takes ~15 passes and finishes in
+    // milliseconds, while anything quadratic needs minutes and dies on the default timeout.
+    const enormous = { type: "object", properties: Object.fromEntries(
+      Array.from({ length: 20_000 }, (_, i) => [`field${i}`, { type: "string" }])) };
+    stubPages([{ tools: [{ name: "a", inputSchema: enormous }] }]);
+    const client = new McpClient("https://mcp.example.com/mcp", async () => null);
+    const { tools: [tool] } = await client.listTools(10);
+    expect(JSON.stringify(tool.inputSchema).length).toBeLessThanOrEqual(4_000);
+    // The bound is still spent on fields rather than on the explanatory description alone.
+    expect(Object.keys(tool.inputSchema!.properties!).length).toBeGreaterThan(0);
+  });
+
+  it("holds the bound even when every field is required", async () => {
+    // The trim used to stop at the required fields, so a schema with nothing optional came back
+    // whole: 2,000 required names serialise to ~100 KiB against a 4,000-character bound, and one
+    // such tool would spend the whole 96 KiB catalog and cost every other tool its place.
+    const names = Array.from({ length: 2000 }, (_, i) => `required${i}`);
+    const allRequired = {
+      type: "object",
+      properties: Object.fromEntries(names.map(name => [name, { type: "string" }])),
+      required: names,
+    };
+    stubPages([{ tools: [{ name: "a", inputSchema: allRequired }] }]);
+    const client = new McpClient("https://mcp.example.com/mcp", async () => null);
+    const { tools: [tool] } = await client.listTools(10);
+    expect(JSON.stringify(tool.inputSchema).length).toBeLessThanOrEqual(4_000);
+    const kept = Object.keys(tool.inputSchema!.properties!);
+    expect(kept.length).toBeGreaterThan(0);
+    // `required` never names a field the schema does not declare, or the abbreviation is malformed.
+    expect(tool.inputSchema!.required).toEqual(kept);
+    expect(tool.inputSchema!.description).toContain("of 2000 top-level fields are listed");
+  });
+
   it("refuses a response too large to buffer", async () => {
     // The catalog caps bound what is *kept*; the body still has to be read whole before anything can
     // parse it, and a `tools/call` result is not bounded at all. A server answering one request with
