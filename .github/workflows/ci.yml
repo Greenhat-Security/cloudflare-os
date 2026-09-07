@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+      # Green Hat fork: our work lives on greenhat/* and lands by direct push, never a PR to main,
+      # so neither trigger above ever matched and this workflow had run zero times on this fork.
+      # The wrapper repo could not stand in for it either: GreenhatOS's `pnpm check` runs the
+      # WRAPPER's `pnpm test`, whose `vp run` only sees that workspace's members, so it tested 70
+      # tests in three packages and none of this repository's suite. Every deploy since the fork
+      # began was gated on "it compiles" alone. Keep this line through an upstream sync.
+      - 'greenhat/**'
   pull_request:
 
 permissions:
