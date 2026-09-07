@@ -48,7 +48,9 @@ import {isReadOnly, READ_ONLY_MESSAGE, readOnlyTypes, requireWritable} from "./r
 import {CursorPager, Pager} from "./cursor";
 import TYPES_CODE from "./types.txt";
 
-type Env = Cloudflare.Env;
+// READ_ONLY is set as a var at deploy time rather than declared in wrangler.jsonc, so it is not in
+// the generated Cloudflare.Env; declared here as google.ts does for the same policy.
+type Env = Cloudflare.Env & { READ_ONLY?: string };
 
 const GMAIL_RESTRICTED_THREAD_PROVIDER_PAGE_SIZE = 500;
 const GMAIL_RESTRICTED_THREAD_RESULT_PAGE_SIZE = 20;
