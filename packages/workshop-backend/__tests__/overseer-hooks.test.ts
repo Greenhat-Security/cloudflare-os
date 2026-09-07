@@ -122,7 +122,12 @@ describe("OverseerDurableObject.startHook", () => {
 
     // The apply route revalidates like the method route: a function-valued callback must not be
     // the one shape that escapes the per-firing revocation.
-    await expect((callback as any)("evt")).rejects.toThrow(/deleted or disabled/);
+    //
+    // Through expectRejection like every other stub call here. `expect(...).rejects` forks the
+    // native JsRpcPromise, and the fork nobody awaits stays unhandled: this one site kept the raw
+    // matcher, so the whole suite exited 1 on an unhandled rejection while all 866 of its tests
+    // passed. Nothing ran the suite, so nobody saw it.
+    await expectRejection((callback as any)("evt"), /deleted or disabled/);
     expect(deliver).not.toHaveBeenCalled();
   });
 
