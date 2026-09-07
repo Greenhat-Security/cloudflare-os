@@ -400,10 +400,12 @@ function isPlainObjectValue(value: unknown): value is Record<string, JsonSchema>
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// Green Hat fork. The bounded stand-in for an input schema too large to keep: the same top-level
-// field names, types and requiredness, so the generated method stays typed on what the agent
-// actually passes, with the nesting reduced to prose. Returns undefined when there is nothing to
-// abbreviate (no top-level properties), which keeps the old behaviour for such schemas.
+/**
+ * Green Hat fork. The bounded stand-in for an input schema too large to keep: the same top-level
+ * field names, types and requiredness, so the generated method stays typed on what the agent
+ * actually passes, with the nesting reduced to prose. Returns undefined when there is nothing to
+ * abbreviate (no top-level properties), which keeps the old behaviour for such schemas.
+ */
 export function abbreviateSchema(schema: JsonSchema, originalChars: number): JsonSchema | undefined {
   if (!isPlainObjectValue(schema.properties)) return undefined;
   const required = Array.isArray(schema.required)

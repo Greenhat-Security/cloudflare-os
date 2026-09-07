@@ -32,7 +32,7 @@ describe("plainSummary", () => {
 
   it("bounds the sentence: clipped values, counted arrays, a field cap", () => {
     const wide = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`f${i}`, i]));
-    const summary = plainSummary(createCompany, { rows: Array(9).fill({}), note: "x".repeat(200), ...wide });
+    const summary = plainSummary(createCompany, { rows: Array.from({ length: 9 }, () => ({})), note: "x".repeat(200), ...wide });
     expect(summary).toContain("and 10 more");
     expect(summary).not.toContain("x".repeat(100));
     expect(summary).toContain("rows: 9 items");
