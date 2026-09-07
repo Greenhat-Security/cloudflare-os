@@ -1,9 +1,9 @@
-// Auto-approval drain core: applies eligible pending actions in id order, with a per-gatekeeper
-// single-flight guard so two concurrent drains (the DO's input gate is open across the apply await)
-// can't double-apply the same action. The apply is injected, keeping this constructible over a
-// mock storage in tests.
+// Auto-approval drain core: applies the gatekeeper's eligible pending actions (read off the sparse
+// pendingByGatekeeper index) in id order, with a per-gatekeeper single-flight guard so two
+// concurrent drains (the DO's input gate is open across the apply await) can't double-apply the
+// same action. The apply is injected, keeping this constructible over a mock storage in tests.
 
-import type { Collection } from "@gadgets/typed-storage";
+import type { Collection, NonUniqueIndex } from "@gadgets/typed-storage";
 import type { AiChatAuthorInfo } from "@gadgets/workshop-shared/api";
 import { createWorkshopLogger } from "./observability";
 import type { ActionRecord, AutoApproveTagRecord } from "./overseer.js";
@@ -11,7 +11,8 @@ import type { ActionRecord, AutoApproveTagRecord } from "./overseer.js";
 const logger = createWorkshopLogger("workshop.auto.approval");
 
 export interface AutoApprovalStorage {
-  actions: Collection<ActionRecord, number>;
+  actions: Collection<ActionRecord, number>
+      & { pendingByGatekeeper: NonUniqueIndex<ActionRecord, number> };
   autoApproveTags: Collection<AutoApproveTagRecord>;
 }
 
@@ -50,21 +51,22 @@ export class AutoApprovalDrainer {
     }
   }
 
-  // Apply all currently-eligible pending actions of the gatekeeper, in ascending id order. Stops at
-  // the first pending action that is NOT auto-eligible (a manual gate) or that throws while applying
-  // -- it is never skipped ahead of. This preserves in-order application and the invariant that
-  // nothing is silently applied past a human gate.
+  // Apply all currently-eligible pending actions of the gatekeeper, in ascending id order. Stops
+  // at the first pending action that is NOT auto-eligible (a manual gate) or that throws while
+  // applying -- it is never skipped ahead of. This preserves in-order application and the
+  // invariant that nothing is silently applied past a human gate.
   //
   // Eligibility requires BOTH signals: the author's `autoApprovable` verdict on the action AND a
   // user-enabled rule for the action's type on this gatekeeper.
   async #drainOnce(gatekeeperId: number): Promise<void> {
-    // Materialize a snapshot first: list() is a lazy generator over storage, and we mutate the
-    // actions collection (via applyPendingAction) as we go.
-    let pending = [...this.storage.actions.list()].filter(
-        (rec): rec is ActionRecord & {type: "action"} =>
-            rec.gatekeeperId === gatekeeperId && rec.type === "action" && rec.state === "pending");
+    // Materialize before applying: the index yields lazily in ascending id order, and applying
+    // mutates it mid-iteration. Actions created after this snapshot trigger their own drain(),
+    // which drain()'s rerun flag folds into this run if it's still in flight.
+    let pending = [...this.storage.actions.pendingByGatekeeper.get(gatekeeperId)];
 
     for (let record of pending) {
+      if (record.type !== "action") continue;
+
       // A failed approval has an outcome the Workshop cannot prove, so it becomes a manual cleanup
       // gate rather than being dispatched again. A resolving claim belongs to a concurrent manual
       // approval or an earlier drain and likewise cannot be skipped past.
@@ -76,7 +78,7 @@ export class AutoApprovalDrainer {
           : undefined;
       if (record.description.autoApprovable !== true || rule === undefined) {
         // A manual gate. Stop rather than skipping ahead to any later auto-eligible action.
-        break;
+        return;
       }
 
       // Re-check immediately before applying, to guard against a concurrent drain having already
@@ -95,7 +97,7 @@ export class AutoApprovalDrainer {
         logger.error("auto-approval failed", {
           event: "auto.approval.failed", actionId: fresh.id, error: err,
         });
-        break;
+        return;
       }
     }
   }

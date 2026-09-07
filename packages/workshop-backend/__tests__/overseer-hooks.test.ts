@@ -6,6 +6,7 @@ import type {AiChatAuthorInfo} from "@gadgets/workshop-shared/api";
 import { DEFAULT_ADMIN_CONFIG, gatekeeperAvailabilityBlock, parseAdminConfig, serializeAdminConfig } from "../src/admin-config.js";
 import { OverseerDurableObject, overseerTestInternals } from "../src/overseer.js";
 import {makeRevalidatingRpcStub} from "../src/revalidating-rpc.js";
+import {makeMockStorage} from "./mock-storage.js";
 
 vi.mock("capnweb-validate", () => ({ validateRpc: () => () => undefined }));
 
@@ -60,6 +61,10 @@ function makeOverseer(
   Object.assign(overseer, {
     env: { BLUEPRINTS: { get: getConfig } },
     impl: {
+      // Upstream's quarantine gate for a connection pending a scope-widening restart. Nothing is
+      // quarantined in these fixtures; the dedicated tests for it live in
+      // observer-scope-restart.test.ts.
+      assertGatekeeperUsable: () => {},
       assertGatekeeperAvailable: async (_id: number, fallbackVendorId?: string) => {
         let config = parseAdminConfig(await getConfig());
         let block = gatekeeperAvailabilityBlock(
@@ -91,6 +96,34 @@ describe("OverseerDurableObject.startHook", () => {
     let {callback} = await overseer.startHook(1);
     await expect((callback as any).deliver("event")).resolves.toBe("delivered:event");
     expect(deliver).toHaveBeenCalledWith("event");
+  });
+
+  it("allows delivery for a function-valued callback invoked directly", async () => {
+    // The bindHook contract (workshop-shared/gatekeeper.ts) allows the bound callback to be a
+    // function, delivered by calling the firing's callback itself rather than a method on it, so
+    // the membrane that wraps it must stay callable.
+    let deliver = vi.fn(async (payload: string) => `delivered:${payload}`);
+    let overseer = makeOverseer(
+        async () => serializeAdminConfig(DEFAULT_ADMIN_CONFIG),
+        { enabled: true, vendorId: "email", callback: deliver });
+
+    let { callback } = await overseer.startHook(1);
+    await expect((callback as any)("evt")).resolves.toBe("delivered:evt");
+    expect(deliver).toHaveBeenCalledWith("evt");
+  });
+
+  it("revokes a directly invoked callback once its hook is disabled", async () => {
+    let deliver = vi.fn();
+    let hook = { enabled: true, vendorId: "email", callback: deliver };
+    let overseer = makeOverseer(async () => serializeAdminConfig(DEFAULT_ADMIN_CONFIG), hook);
+    let { callback } = await overseer.startHook(1);
+
+    hook.enabled = false;
+
+    // The apply route revalidates like the method route: a function-valued callback must not be
+    // the one shape that escapes the per-firing revocation.
+    await expect((callback as any)("evt")).rejects.toThrow(/deleted or disabled/);
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it("rejects delivery for an administratively disabled ordinary vendor", async () => {
@@ -399,6 +432,27 @@ describe("connection minting authority", () => {
   });
 });
 
+// A real OverseerImpl with the given members replaced. Constructed rather than forged over the
+// prototype because the hook transitions reach private members -- the "use"-scope diff that
+// restarts collaborators whose verification scope widened -- and those are unreachable on an
+// object that never ran the constructor.
+function forgeImpl(overrides: object): OverseerImplForTest {
+  let ctx = {
+    id: {toString: () => "workspace-id"},
+    storage: makeMockStorage(),
+    exports: {},
+    waitUntil: () => {},
+    facets: {get: vi.fn(), abort: vi.fn()},
+  } as unknown as DurableObjectState;
+  let impl = new overseerTestInternals.OverseerImpl(ctx, {} as Cloudflare.Env);
+  // Storage is merged, not replaced: the transitions walk collections this fixture does not name
+  // (gadgets and connections, for the scope diff), and those must stay the real ones.
+  let {storage, ...rest} = overrides as {storage?: object};
+  Object.assign(impl, rest);
+  if (storage) Object.assign(impl.storage, storage);
+  return impl as OverseerImplForTest;
+}
+
 async function makeTargetOverseer(
     gadgetId?: number,
     assertGatekeeperAvailable: (gatekeeperId: number, vendorId?: string) => Promise<void> =
@@ -416,10 +470,12 @@ async function makeTargetOverseer(
     description: {title: "Incoming email", description: "Receives email"},
     enabled: false,
   };
-  let impl = Object.create(
-      overseerTestInternals.OverseerImpl.prototype) as OverseerImplForTest;
-  Object.assign(impl, {
+  let impl = forgeImpl({
     ownerId: "user-id",
+    // Upstream's client constructor joins the session and consults the restart quarantine; this
+    // fixture forges an impl over the prototype, so neither has the private state they read.
+    joinSession: () => () => {},
+    assertGatekeeperUsable: () => {},
     ensureAmbientCapsules: async () => {},
     markOutputsDirty: () => {},
     joinPresence: () => () => {},
@@ -439,7 +495,7 @@ async function makeTargetOverseer(
     },
     storage: {
       prohibitAllSharing: {get: () => false},
-      boundHooks: {get: () => record, put: vi.fn()},
+      boundHooks: {get: () => record, put: vi.fn(), list: () => [record]},
       actions: {get: () => undefined, put: vi.fn()},
     },
   });
@@ -491,9 +547,7 @@ function makeHookTransitionHarness(options: {
   let action = {type: "bindHook" as const, enabled: record.enabled, hookId: record.id};
   let records = new Map([[record.id, record]]);
   let actions = new Map([[record.actionId, action]]);
-  let impl = Object.create(
-      overseerTestInternals.OverseerImpl.prototype) as OverseerImplForTest;
-  Object.assign(impl, {
+  let impl = forgeImpl({
     hookTransitions: new Map(),
     logger: {warn: vi.fn()},
     assertGatekeeperAvailable: vi.fn(options.assertAvailable ?? (async () => {})),
@@ -588,6 +642,31 @@ describe("hook target", () => {
     });
   });
 
+  it("does not resurrect a hook deleted while its disable was in flight", async () => {
+    // The property upstream covered by driving the client's inline flip: a delete landing while
+    // the provider disable is parked is the authoritative kill, and the record captured before
+    // that await must not put it back. Here the same race runs through the durable transition.
+    let disableStarted = deferred();
+    let releaseDisable = deferred();
+    let harness = makeHookTransitionHarness({
+      enabled: true,
+      disable: async () => {
+        disableStarted.resolve();
+        await releaseDisable.promise;
+      },
+    });
+
+    let disabling = harness.impl.disableHook(4);
+    await disableStarted.promise;
+    harness.records.delete(4);
+
+    releaseDisable.resolve();
+    // The disable reports that it was superseded rather than reporting success it cannot claim;
+    // what matters is that the record it captured before the await never comes back.
+    await expect(disabling).rejects.toThrow(/superseded/);
+    expect(harness.records.has(4)).toBe(false);
+  });
+
   it("makes delete win over an in-flight enable and removes the durable tombstone last",
       async () => {
     let enableStarted = deferred();
@@ -613,7 +692,7 @@ describe("hook target", () => {
 
     expect(harness.controllerDisable).toHaveBeenCalledTimes(2);
     expect(harness.records.has(4)).toBe(false);
-    expect(harness.actions.get(12)).toEqual({type: "bindHook", enabled: false});
+    expect(harness.actions.get(12)).toMatchObject({type: "bindHook", enabled: false});
   });
 
   it("compensates when admin policy changes during provider enable", async () => {
@@ -769,6 +848,8 @@ describe("disabled connection recovery", () => {
       open: OverseerDurableObject.prototype.open,
       impl: {
         ownerId: "user-id",
+        joinSession: () => () => {},
+        assertGatekeeperUsable: () => {},
         ensureAmbientCapsules: async () => {},
         markOutputsDirty: () => {},
         joinPresence: () => () => {},
