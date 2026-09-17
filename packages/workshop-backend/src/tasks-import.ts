@@ -29,10 +29,22 @@
 //
 // Response: 200 with per-user counts. Users without an OS account are reported under `skipped`,
 // never created. Validation failures are 400 with the field path.
+//
+// A Worker in the same account (the nightly CRM sync in the wrapper repository) uses the
+// `TaskImportGateway` service-binding entrypoint at the bottom instead: same payload, same rules,
+// no public hostname and therefore neither gate, since only a Worker this deployment bound to it
+// can reach a service binding.
 
 import { z } from "zod";
 import type { JWTPayload } from "jose";
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { validateRpc } from "capnweb-validate";
 import { createLogger } from "@gadgets/backend-utils/logger";
+import type {
+  TaskImportGateway as TaskImportGatewayContract,
+  TaskImportPayload,
+  TaskImportResult,
+} from "@gadgets/workshop-shared/task-import-gateway";
 import {
   MAX_TASK_NOTES_LENGTH,
   MAX_TASK_SYNC_ITEMS,
@@ -101,14 +113,13 @@ const importSchema = z.object({
   tasks: z.array(importedTaskSchema).max(MAX_TASK_IMPORT_TASKS),
 });
 
-/** The body of a successful import. */
-export type TaskImportResult = {
-  source: string;
-  /** One entry per user the payload addressed and who has an account here. */
-  users: Array<{ assignee: string } & TaskImportCounts>;
-  /** Addresses the payload named that have no account on this deployment; nothing was written. */
-  skipped: Array<{ assignee: string; reason: string }>;
-};
+/** One validation complaint, by field path. */
+export type TaskImportIssue = { path: string; message: string };
+
+/** What routing one payload came to: a status and the JSON body both callers hand back. */
+export type TaskImportOutcome =
+  | { status: 200; body: TaskImportResult }
+  | { status: 400; body: { error: string; issues?: TaskImportIssue[]; assignee?: string } };
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -204,15 +215,28 @@ export async function handleTaskImportRequest(
     return json(400, { error: "Task import body is not valid JSON." });
   }
 
+  let outcome = await importTaskPayload(body, users);
+  return json(outcome.status, outcome.body);
+}
+
+/**
+ * Validate one payload and write it into the addressed users' lists. Shared by the HTTP endpoint
+ * (after its gates) and the service-binding entrypoint (which needs none).
+ */
+export async function importTaskPayload(body: unknown, users: TaskImportUsers)
+    : Promise<TaskImportOutcome> {
   let parsed = importSchema.safeParse(body);
   if (!parsed.success) {
-    return json(400, {
-      error: "Task import body failed validation.",
-      issues: parsed.error.issues.map(issue => ({
-        path: issue.path.map(String).join("."),
-        message: issue.message,
-      })),
-    });
+    return {
+      status: 400,
+      body: {
+        error: "Task import body failed validation.",
+        issues: parsed.error.issues.map(issue => ({
+          path: issue.path.map(String).join("."),
+          message: issue.message,
+        })),
+      },
+    };
   }
   let payload = parsed.data;
 
@@ -222,7 +246,7 @@ export async function handleTaskImportRequest(
     source = normalizeTaskSource(payload.source);
     sourceLabel = normalizeTaskSourceLabel(payload.sourceLabel);
   } catch (err) {
-    if (err instanceof TaskInputError) return json(400, { error: err.message });
+    if (err instanceof TaskInputError) return { status: 400, body: { error: err.message } };
     throw err;
   }
 
@@ -232,10 +256,13 @@ export async function handleTaskImportRequest(
   for (let [index, task] of payload.tasks.entries()) {
     let assignee = (task.assignee ?? payload.assignee)?.trim().toLowerCase();
     if (!assignee) {
-      return json(400, {
-        error: "Every task needs an assignee: set one on the task or a default on the payload.",
-        issues: [{ path: `tasks.${index}.assignee`, message: "missing" }],
-      });
+      return {
+        status: 400,
+        body: {
+          error: "Every task needs an assignee: set one on the task or a default on the payload.",
+          issues: [{ path: `tasks.${index}.assignee`, message: "missing" }],
+        },
+      };
     }
     let { assignee: _assignee, ...item } = task;
     let list = byAssignee.get(assignee);
@@ -262,7 +289,7 @@ export async function handleTaskImportRequest(
       logger.warn("task import rejected by user object", {
         event: "tasks.import.rejected", source, error: err,
       });
-      return json(400, { error: message, assignee });
+      return { status: 400, body: { error: message, assignee } };
     }
     if (counts === null) {
       result.skipped.push({ assignee, reason: "no account on this deployment" });
@@ -274,5 +301,23 @@ export async function handleTaskImportRequest(
   logger.info("tasks imported", {
     event: "tasks.import.completed", source, users: result.users.length, tasks: payload.tasks.length,
   });
-  return json(200, result);
+  return { status: 200, body: result };
+}
+
+/**
+ * Service-binding entrypoint (`entrypoint: "TaskImportGateway"` on a Worker in this account): the
+ * same import as the endpoint, minus its two gates, which a service binding makes unnecessary.
+ * A payload that fails validation rejects with the first complaint's field path in the message.
+ */
+@validateRpc()
+export class TaskImportGateway extends WorkerEntrypoint<Cloudflare.Env>
+    implements TaskImportGatewayContract {
+  async importTasks(payload: TaskImportPayload): Promise<TaskImportResult> {
+    let outcome = await importTaskPayload(payload, this.ctx.exports.UserDurableObject);
+    if (outcome.status !== 200) {
+      let issues = outcome.body.issues?.map(issue => `${issue.path}: ${issue.message}`).join("; ");
+      throw new Error(outcome.body.error + (issues ? ` (${issues})` : ""));
+    }
+    return outcome.body;
+  }
 }

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { env } from "cloudflare:workers";
-import { handleTaskImportRequest, TASK_IMPORT_PATH } from "../src/tasks-import.js";
+import { handleTaskImportRequest, importTaskPayload, TASK_IMPORT_PATH } from "../src/tasks-import.js";
 import type { UserDurableObject } from "../src/user.js";
 
 declare module "cloudflare:workers" {
@@ -143,6 +143,20 @@ describe("handleTaskImportRequest", () => {
     });
     expect(await users.get(users.idFromName(bob)).listTasks()).toHaveLength(1);
     expect(await users.get(users.idFromName("nobody@example.com")).whoamiIfExists()).toBeNull();
+  });
+
+  it("routes a payload handed over a service binding the same way, without the gates", async () => {
+    let email = await signUp();
+    let ok = await importTaskPayload({
+      source: "crm", sourceLabel: "Green Hat CRM", assignee: email,
+      tasks: [{ externalId: "9", title: "From the nightly sync", dueDate: "2026-09-19" }],
+    }, users);
+    expect(ok).toEqual({ status: 200, body: {
+      source: "crm", users: [{ assignee: email, created: 1, updated: 0, removed: 0, kept: 0 }], skipped: [],
+    } });
+    let bad = await importTaskPayload({ source: "crm", assignee: email, tasks: [{ externalId: "9" }] }, users);
+    expect(bad.status).toBe(400);
+    expect(bad.body).toMatchObject({ issues: [{ path: "tasks.0.title" }] });
   });
 
   it("replaces by default and merges when asked", async () => {

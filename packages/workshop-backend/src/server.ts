@@ -29,7 +29,7 @@ import { ExternalMessageGateway } from "./external-message-gateway";
 import { RpcStub as NativeRpcStub } from "cloudflare:workers";
 import { recordAnalytics } from "./analytics";
 import { handleClientErrorRequest } from "./client-errors.js";
-import { handleTaskImportRequest, TASK_IMPORT_PATH } from "./tasks-import.js";
+import { handleTaskImportRequest, TASK_IMPORT_PATH, TaskImportGateway } from "./tasks-import.js";
 import { normalizeTaskSource, normalizeTaskSourceLabel } from "./tasks.js";
 import { verifyCfAccessJwt } from "./access.js";
 import { resolveUiFeatureFlags } from "./feature-flags";
@@ -67,6 +67,9 @@ export { OverseerDurableObject, GatekeeperLoopback, GatekeeperHookLoopback,
 
 // Re-export service-binding entrypoint for external channel integrations.
 export { ExternalMessageGateway };
+
+// Green Hat fork: service-binding entrypoint for task syncs from Workers in the same account.
+export { TaskImportGateway };
 
 // Declare optional environment variables here since they may be omitted from wrangler.jsonc.
 type Env = Cloudflare.Env & {
