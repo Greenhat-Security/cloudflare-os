@@ -1,7 +1,7 @@
 import { RpcStub, RpcTarget, newHttpBatchRpcResponse, newWebSocketRpcSession, RpcSessionOptions } from "capnweb";
 import { validateRpc } from "capnweb-validate";
 import type { JWTPayload } from "jose";
-import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError, NewTaskInput, TaskInfo, TaskPatch } from '@gadgets/workshop-shared/api';
+import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError, NewTaskInput, TaskInfo, TaskPatch, TaskImportItem, TaskImportCounts, MAX_TASK_SYNC_ITEMS } from '@gadgets/workshop-shared/api';
 import type { UiFeatureFlags } from "@gadgets/workshop-shared/feature-flags";
 import { getServerConfig } from "./deployment-config.js";
 import { isPasswordAuthEnabled, getAuthGatekeeperAllowlist } from "./auth/config.js";
@@ -30,6 +30,7 @@ import { RpcStub as NativeRpcStub } from "cloudflare:workers";
 import { recordAnalytics } from "./analytics";
 import { handleClientErrorRequest } from "./client-errors.js";
 import { handleTaskImportRequest, TASK_IMPORT_PATH } from "./tasks-import.js";
+import { normalizeTaskSource, normalizeTaskSourceLabel } from "./tasks.js";
 import { verifyCfAccessJwt } from "./access.js";
 import { resolveUiFeatureFlags } from "./feature-flags";
 import { serveSiteLogo, SITE_LOGO_PATH } from "./site-logo.js";
@@ -325,6 +326,18 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
   clearCompletedTasks(): Promise<number> {
     return this.#user.clearCompletedTasks();
+  }
+  async syncTasks(source: string, sourceLabel: string | null, tasks: TaskImportItem[],
+                  replace: boolean): Promise<TaskImportCounts> {
+    if (tasks.length > MAX_TASK_SYNC_ITEMS) {
+      throw new Error(`A sync carries at most ${MAX_TASK_SYNC_ITEMS} tasks.`);
+    }
+    let counts = await this.#user.importTasks(
+        normalizeTaskSource(source), normalizeTaskSourceLabel(sourceLabel), tasks, replace);
+    // The caller is authenticated, so their account exists; null would mean the user object
+    // was deleted underneath the session.
+    if (counts === null) throw new Error("No account to sync tasks into.");
+    return counts;
   }
 
   async listOutputFormats(): Promise<OutputFormatOffer[]> {

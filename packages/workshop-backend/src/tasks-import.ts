@@ -35,9 +35,12 @@ import type { JWTPayload } from "jose";
 import { createLogger } from "@gadgets/backend-utils/logger";
 import {
   MAX_TASK_NOTES_LENGTH,
+  MAX_TASK_SYNC_ITEMS,
   MAX_TASK_TAG_LENGTH,
   MAX_TASK_TITLE_LENGTH,
   TASK_PRIORITIES,
+  type TaskImportCounts,
+  type TaskImportItem,
 } from "@gadgets/workshop-shared/api";
 import { verifyCfAccessJwt, type CfAccessEnv } from "./access.js";
 import {
@@ -49,8 +52,6 @@ import {
   TaskInputError,
   normalizeTaskSource,
   normalizeTaskSourceLabel,
-  type ImportedTask,
-  type TaskImportCounts,
 } from "./tasks.js";
 import type { UserDurableObject } from "./user.js";
 
@@ -60,8 +61,8 @@ export const TASK_IMPORT_PATH = "/api/tasks/import";
 /** Largest request body accepted. */
 export const MAX_TASK_IMPORT_BODY_BYTES = 512 * 1024;
 
-/** Most tasks one request may carry. A source with more syncs in pages. */
-export const MAX_TASK_IMPORT_TASKS = 500;
+/** Most tasks one request may carry; the same cap as the browser sync path. */
+export const MAX_TASK_IMPORT_TASKS = MAX_TASK_SYNC_ITEMS;
 
 type TaskImportLogFields = { source?: string; users?: number; tasks?: number };
 const logger = createLogger<TaskImportLogFields>({ component: "workshop.tasks-import" });
@@ -227,7 +228,7 @@ export async function handleTaskImportRequest(
 
   // Route each task to its owner. Addresses are lowercased: that is how Access presents them and
   // therefore how the user Durable Objects are named.
-  let byAssignee = new Map<string, ImportedTask[]>();
+  let byAssignee = new Map<string, TaskImportItem[]>();
   for (let [index, task] of payload.tasks.entries()) {
     let assignee = (task.assignee ?? payload.assignee)?.trim().toLowerCase();
     if (!assignee) {

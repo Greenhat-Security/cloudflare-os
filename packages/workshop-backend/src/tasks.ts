@@ -11,6 +11,7 @@ import {
   OS_TASK_SOURCE,
   TASK_PRIORITIES,
   type NewTaskInput,
+  type TaskImportItem,
   type TaskInfo,
   type TaskPatch,
   type TaskPriority,
@@ -41,30 +42,6 @@ export type TaskRecord = TaskInfo & {
   localEditedAt?: Date;
   /** The source system's own modification time for an imported task, when the importer sent one. */
   sourceUpdatedAt?: Date;
-};
-
-/** One task as an importer describes it, after the endpoint has validated the request body. */
-export type ImportedTask = {
-  externalId: string;
-  title: string;
-  notes?: string;
-  status?: TaskStatus;
-  priority?: TaskPriority | null;
-  dueDate?: string | null;
-  tag?: string | null;
-  url?: string | null;
-  /** ISO 8601 instant the source last changed the task; lets a newer local edit survive a sync. */
-  updatedAt?: string;
-};
-
-/** What one user's import came to. */
-export type TaskImportCounts = {
-  created: number;
-  updated: number;
-  /** Tasks the source no longer lists, deleted here because the importer asked to replace. */
-  removed: number;
-  /** Tasks left as they were because the user edited them here more recently than the source. */
-  kept: number;
 };
 
 /** Thrown for input the types allow but the rules do not; the message is meant for the user. */
@@ -220,7 +197,7 @@ export function applyTaskPatch(task: TaskRecord, patch: TaskPatch, now: Date): T
  */
 export function reconcileImportedTask(
     existing: TaskRecord | undefined, id: string, source: string, sourceLabel: string | null,
-    item: ImportedTask, now: Date): TaskRecord | null {
+    item: TaskImportItem, now: Date): TaskRecord | null {
   let sourceUpdatedAt = item.updatedAt === undefined ? undefined : new Date(item.updatedAt);
   if (sourceUpdatedAt !== undefined && Number.isNaN(sourceUpdatedAt.valueOf())) {
     throw new TaskInputError(`updatedAt "${item.updatedAt}" is not an ISO 8601 instant.`);

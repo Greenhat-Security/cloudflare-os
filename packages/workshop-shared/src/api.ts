@@ -731,6 +731,17 @@ export interface AuthenticatedApi extends RpcTarget {
   /** Delete every completed task, returning how many were removed. */
   clearCompletedTasks(): Promise<number>;
 
+  /**
+   * Bring the caller's tasks from one source in line with what that source lists now: the
+   * browser's way in for a tool that exposes a per-user feed the user is signed into (the Green
+   * Hat tools' own task feed). Automations use the HTTP import endpoint instead. Same rules as
+   * that endpoint: with `replace`, the source's tasks not listed here are deleted; the source
+   * wins over local edits unless it dates its records and the local edit is newer. `source` is
+   * the tool's slug and may not be OS_TASK_SOURCE.
+   */
+  syncTasks(source: string, sourceLabel: string | null, tasks: TaskImportItem[],
+            replace: boolean): Promise<TaskImportCounts>;
+
   // --- Deployment admin ---
 
   /**
@@ -849,6 +860,39 @@ export type TaskPatch = {
   dueDate?: string | null;
   tag?: string | null;
 };
+
+/**
+ * One task as an importing tool describes it: an entry of `POST /api/tasks/import` (automations)
+ * and of `AuthenticatedApi.syncTasks()` (the browser relaying a feed the user is signed into).
+ * `externalId` is the tool's own id for the task and must be stable across syncs.
+ */
+export type TaskImportItem = {
+  externalId: string;
+  title: string;
+  notes?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority | null;
+  /** `YYYY-MM-DD`, or null / absent for "someday". */
+  dueDate?: string | null;
+  tag?: string | null;
+  /** Link to the task in the tool; http(s) only. */
+  url?: string | null;
+  /** ISO 8601 instant the tool last changed the task; lets a newer edit made in the OS win. */
+  updatedAt?: string;
+};
+
+/** What one user's sync from one source came to. */
+export type TaskImportCounts = {
+  created: number;
+  updated: number;
+  /** Tasks the source no longer lists, deleted here because the sync replaces. */
+  removed: number;
+  /** Tasks left as they were because the user edited them here more recently than the source. */
+  kept: number;
+};
+
+/** Most tasks one sync, by either path, may carry. A larger source syncs in pages. */
+export const MAX_TASK_SYNC_ITEMS = 500;
 
 // ---------------------------------------------------------------------------
 // Context Library — pluggable separate worker (packages/gatekeeper-context)

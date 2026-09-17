@@ -24,6 +24,7 @@ import {
   type TaskHorizon,
 } from './taskGrouping'
 import { useTasks } from './useTasks'
+import { useToolsFeedSync } from './useToolsFeedSync'
 
 const STORAGE_KEY_HORIZON = 'gadgets:tasks-horizon'
 const STORAGE_KEY_COLLAPSED = 'gadgets:tasks-collapsed'
@@ -153,6 +154,8 @@ function SectionHeader({
  */
 export default function TaskList() {
   const { tasks, loading, failed, refresh, createTask, updateTask, deleteTask, clearCompleted } = useTasks()
+  // The Green Hat tools' feed lands in the same list; reload once it has.
+  useToolsFeedSync(refresh)
   const today = useToday()
   const [horizon, setHorizon] = useState<TaskHorizon>(readHorizon)
   const [collapsed, setCollapsed] = useState<Record<TaskGroupId, boolean>>(readCollapsed)

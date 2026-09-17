@@ -1,8 +1,6 @@
 import { RpcStub } from "capnweb";
-import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, AUTH_ERROR_CODES, createAuthError, MAX_TASKS_PER_USER, TASK_COMPLETED_RETENTION_DAYS, NewTaskInput, TaskInfo, TaskPatch } from '@gadgets/workshop-shared/api';
+import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, AUTH_ERROR_CODES, createAuthError, MAX_TASKS_PER_USER, TASK_COMPLETED_RETENTION_DAYS, NewTaskInput, TaskImportCounts, TaskImportItem, TaskInfo, TaskPatch } from '@gadgets/workshop-shared/api';
 import {
-  type ImportedTask,
-  type TaskImportCounts,
   type TaskRecord,
   applyTaskPatch,
   importedTaskId,
@@ -960,7 +958,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * this source that the payload no longer lists are deleted: the source closed or reassigned
    * them. Other sources' tasks and the user's own are never touched.
    */
-  async importTasks(source: string, sourceLabel: string | null, items: ImportedTask[],
+  async importTasks(source: string, sourceLabel: string | null, items: TaskImportItem[],
                     replace: boolean): Promise<TaskImportCounts | null> {
     if (!this.storage.created.get()) return null;
 

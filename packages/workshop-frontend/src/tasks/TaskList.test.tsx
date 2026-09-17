@@ -57,6 +57,8 @@ const api = {
 vi.mock('../AuthContext', () => ({
   useAuthenticatedApi: () => ({ authenticatedApi: api, currentUser: null, isAdmin: false, logout: () => {} }),
 }))
+// The tools' feed sync has its own tests and would otherwise reach for the network here.
+vi.mock('./useToolsFeedSync', () => ({ useToolsFeedSync: () => {} }))
 
 import TaskList from './TaskList'
 
