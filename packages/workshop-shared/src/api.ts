@@ -3431,6 +3431,15 @@ export type AiToolCall = {
     dueDate?: string;
     priority?: TaskPriority;
     tag?: string;
+    /**
+     * When the task mirrors a record in another system: that system's slug (e.g. "crm"), the
+     * record's id there, a display name and a link. The task is then keyed `<source>:<id>` like
+     * an import, so a later sync from that system updates it rather than adding a duplicate.
+     */
+    source?: string;
+    externalId?: string;
+    sourceLabel?: string;
+    url?: string;
   };
   output?: string;
 } | {

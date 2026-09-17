@@ -5,6 +5,8 @@ import {
   applyTaskPatch,
   importedTaskId,
   newOsTask,
+  normalizeTaskSource,
+  normalizeTaskSourceLabel,
   reconcileImportedTask,
   toTaskInfo,
 } from "./tasks.js";
@@ -994,6 +996,22 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       }
     }
     return counts;
+  }
+
+  /**
+   * One task that mirrors a record elsewhere, added or updated in place: what an agent does when
+   * the user asks it to put their CRM tasks on the list. Keyed like an import from that source,
+   * so the source's next sync updates the same record; the source's own version wins there.
+   */
+  async mirrorTask(source: string, sourceLabel: string | null, item: TaskImportItem)
+      : Promise<TaskInfo> {
+    let id = importedTaskId(normalizeTaskSource(source), item.externalId);
+    let existing = this.storage.tasks.get(id);
+    if (!existing) this.#requireTaskCapacity(1);
+    let next = reconcileImportedTask(existing, id, source, normalizeTaskSourceLabel(sourceLabel),
+        item, new Date());
+    if (next !== null) this.storage.tasks.put(next);
+    return toTaskInfo(next ?? existing!);
   }
 
   #requireTaskCapacity(additional: number): void {

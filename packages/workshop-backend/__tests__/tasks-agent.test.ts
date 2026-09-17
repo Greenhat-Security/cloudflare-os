@@ -3,6 +3,7 @@ import type { TaskInfo } from "@gadgets/workshop-shared/api";
 import {
   describeTask,
   formatTaskList,
+  mirrorFromToolInput,
   newTaskFromToolInput,
   patchFromToolInput,
 } from "../src/tasks-agent.js";
@@ -58,6 +59,21 @@ describe("tool input mapping", () => {
         .toEqual({ dueDate: null, priority: null, tag: null });
     expect(patchFromToolInput({ id: "t", dueDate: "2026-09-19", priority: "high", tag: "Audit", title: "x", notes: "n" }))
         .toEqual({ dueDate: "2026-09-19", priority: "high", tag: "Audit", title: "x", notes: "n" });
+  });
+
+  it("turns a sourced add into a mirrored record and insists on the record's id", () => {
+    expect(mirrorFromToolInput({ title: "Call Archie" })).toBeNull();
+    expect(mirrorFromToolInput({
+      title: "Call Archie", source: "crm", externalId: "42", sourceLabel: "Green Hat CRM",
+      url: "https://crm.example/object/task/42", dueDate: "2026-09-18", priority: "low", tag: "Sales",
+    })).toEqual({
+      source: "crm", sourceLabel: "Green Hat CRM",
+      item: {
+        externalId: "42", title: "Call Archie", notes: undefined, dueDate: "2026-09-18", priority: "low",
+        tag: "Sales", url: "https://crm.example/object/task/42",
+      },
+    });
+    expect(() => mirrorFromToolInput({ title: "x", source: "crm" })).toThrow(/externalId/);
   });
 
   it("describes a changed task on one line", () => {

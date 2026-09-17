@@ -146,6 +146,27 @@ describe("UserDurableObject tasks", () => {
     expect((await user.listTasks())[0].status).toBe("open");
   });
 
+  it("mirrors a record in place, so a later sync from that source updates rather than duplicates", async () => {
+    let user = await makeUser();
+    let added = await user.mirrorTask("crm", "Green Hat CRM", {
+      externalId: "42", title: "Call Archie", dueDate: "2026-09-18", url: "https://crm.example/object/task/42",
+    });
+    expect(added).toMatchObject({ id: "crm:42", source: "crm", sourceLabel: "Green Hat CRM", status: "open" });
+    let again = await user.mirrorTask("crm", "Green Hat CRM", { externalId: "42", title: "Call Archie back" });
+    expect(again.id).toBe("crm:42");
+    expect(again.title).toBe("Call Archie back");
+    expect(await user.listTasks()).toHaveLength(1);
+
+    let synced = await user.importTasks("crm", "Green Hat CRM", [
+      { externalId: "42", title: "Call Archie back", status: "done" },
+    ], true);
+    expect(synced).toEqual({ created: 0, updated: 1, removed: 0, kept: 0 });
+    let tasks = await user.listTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].status).toBe("done");
+    await expectRejection(user.mirrorTask("os", null, { externalId: "1", title: "x" }), /OS's own source id/);
+  });
+
   it("does not import into an account that does not exist", async () => {
     let stub = env.TEST_USER.get(env.TEST_USER.idFromName("nobody@example.com"));
     expect(await stub.importTasks("crm", null, [{ externalId: "1", title: "x" }], true)).toBeNull();

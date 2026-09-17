@@ -9661,6 +9661,7 @@ class OverseerImpl implements AgentHooks {
     return {
       list: () => user().listTasks(),
       create: (input) => user().createTask(input),
+      mirror: (source, sourceLabel, item) => user().mirrorTask(source, sourceLabel, item),
       update: (id, patch) => user().updateTask(id, patch),
       delete: (id) => user().deleteTask(id),
     };

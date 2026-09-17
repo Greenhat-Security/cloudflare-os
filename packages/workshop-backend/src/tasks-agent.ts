@@ -7,6 +7,7 @@ import {
   OS_TASK_SOURCE,
   type AiToolCall,
   type NewTaskInput,
+  type TaskImportItem,
   type TaskInfo,
   type TaskPatch,
 } from "@gadgets/workshop-shared/api";
@@ -15,6 +16,11 @@ import {
 export type AgentTaskList = {
   list(): Promise<TaskInfo[]>;
   create(input: NewTaskInput): Promise<TaskInfo>;
+  /**
+   * Add or update a task that mirrors a record in another system, keyed by that system and the
+   * record's id there, exactly as a sync from it would.
+   */
+  mirror(source: string, sourceLabel: string | null, item: TaskImportItem): Promise<TaskInfo>;
   update(id: string, patch: TaskPatch): Promise<TaskInfo>;
   delete(id: string): Promise<void>;
 };
@@ -26,7 +32,9 @@ type UpdateTaskInput = Extract<AiToolCall, {toolName: "updateTask"}>["input"];
 export const TASK_LIST_PROMPT = `
 # The user's task list
 
-The user keeps a task list on their Home page: tasks they typed there and tasks their other Green Hat tools push in (each of those carries a source and a link back). Read it with \`listTasks\` whenever the user asks what they should work on, what is due, or refers to "my tasks"; add to it with \`addTask\` when they ask you to remember or schedule something; and \`updateTask\` to mark something done, reschedule it, or change its priority. Prefer \`listTasks\` first so you act on the real ids and titles. The list belongs to the person driving this chat.
+The user keeps a task list on their Home page: tasks they typed there and tasks their other Green Hat tools push in (each of those carries a source and a link back). Read it with \`listTasks\` whenever the user asks what they should work on, what is due, or refers to "my tasks" or "my task list"; add to it with \`addTask\` when they ask you to remember, schedule, or add something; and \`updateTask\` to mark something done, reschedule it, or change its priority. Prefer \`listTasks\` first so you act on the real ids and titles. The list belongs to the person driving this chat.
+
+The list already exists: NEVER create a Gadget to hold the user's tasks, and do not build a to-do app when they ask you to add things to their task list — these tools are how you reach it. When the tasks you add come from another system (their CRM, a tracker), pass \`source\`, \`externalId\`, \`sourceLabel\` and \`url\` on each \`addTask\` so the nightly sync from that system recognises them instead of adding duplicates.
 `.trim();
 
 export const LIST_TASKS_TOOL_DESCRIPTION = `
@@ -35,6 +43,8 @@ Read the user's task list: every open task grouped by when it is due (overdue, t
 
 export const ADD_TASK_TOOL_DESCRIPTION = `
 Add a task to the user's list. Give a short imperative title; set dueDate (YYYY-MM-DD) only when the user named a day, priority only when they signalled urgency, and tag for the project or area they mentioned. The task is created open, owned by the user, and shown on their Home page.
+
+If the task mirrors a record in another system (a CRM task, a tracker issue), also pass source (that system's slug, lowercase: "crm" for the Green Hat CRM), externalId (the record's id there), sourceLabel (its display name, e.g. "Green Hat CRM") and url (a link to the record). The task is then keyed by that id, so adding it again updates it and the nightly sync from that system takes it over instead of duplicating it.
 `.trim();
 
 export const UPDATE_TASK_TOOL_DESCRIPTION = `
@@ -111,6 +121,31 @@ export function newTaskFromToolInput(input: AddTaskInput): NewTaskInput {
     dueDate: input.dueDate,
     priority: input.priority ?? null,
     tag: input.tag,
+  };
+}
+
+/**
+ * The addTask tool's input as a mirrored record, when it names a source. `externalId` is required
+ * with `source`: without the record's id nothing could key the task for a later sync.
+ */
+export function mirrorFromToolInput(input: AddTaskInput)
+    : { source: string; sourceLabel: string | null; item: TaskImportItem } | null {
+  if (!input.source) return null;
+  if (!input.externalId) {
+    throw new Error("addTask: a task with a source also needs the record's externalId there.");
+  }
+  return {
+    source: input.source,
+    sourceLabel: input.sourceLabel ?? null,
+    item: {
+      externalId: input.externalId,
+      title: input.title,
+      notes: input.notes,
+      dueDate: input.dueDate,
+      priority: input.priority ?? null,
+      tag: input.tag,
+      url: input.url,
+    },
   };
 }
 

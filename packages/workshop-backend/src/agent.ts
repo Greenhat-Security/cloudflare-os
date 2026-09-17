@@ -17,7 +17,7 @@ import { webFetch as webFetchImpl, WebFetchEnv, formatWebFetchResult } from "./w
 import {
   type AgentTaskList, ADD_TASK_TOOL_DESCRIPTION, DELETE_TASK_TOOL_DESCRIPTION,
   LIST_TASKS_TOOL_DESCRIPTION, TASK_LIST_PROMPT, UPDATE_TASK_TOOL_DESCRIPTION, describeTask,
-  formatTaskList, newTaskFromToolInput, patchFromToolInput,
+  formatTaskList, mirrorFromToolInput, newTaskFromToolInput, patchFromToolInput,
 } from "./tasks-agent";
 import { AgentCatalogSnapshot, formatAlwaysAvailableResourcesPrompt } from "./agent-catalog";
 import { formatInstanceInstructions } from "./admin-config";
@@ -3136,10 +3136,20 @@ export async function runAgent(
           Type.Literal("high"), Type.Literal("medium"), Type.Literal("low"),
         ])),
         tag: Type.Optional(Type.String({description: "Project or area, e.g. Audit, Sales."})),
+        source: Type.Optional(Type.String({
+          description: "Slug of the system the task mirrors a record in, e.g. \"crm\". Lowercase.",
+        })),
+        externalId: Type.Optional(Type.String({description: "The record's id in that system."})),
+        sourceLabel: Type.Optional(Type.String({description: "That system's display name."})),
+        url: Type.Optional(Type.String({description: "Link to the record there (https)."})),
       }),
       execute: async (toolCallId, input) => {
         try {
-          let task = await hooks.getTaskList(initiator).create(newTaskFromToolInput(input));
+          let list = hooks.getTaskList(initiator);
+          let mirrored = mirrorFromToolInput(input);
+          let task = mirrored
+              ? await list.mirror(mirrored.source, mirrored.sourceLabel, mirrored.item)
+              : await list.create(newTaskFromToolInput(input));
           let output = `Added: ${describeTask(task)}`;
           return toolResult(output, { output });
         } catch (error) {
