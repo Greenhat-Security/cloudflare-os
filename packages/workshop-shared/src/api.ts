@@ -3413,6 +3413,47 @@ export type AiToolCall = {
     bindingName?: string;
   };
   output?: string;
+} | {
+  /**
+   * Green Hat fork: read the driving user's task list (what Home shows). The formatted text is
+   * recorded so replay does not re-read.
+   */
+  toolName: "listTasks";
+  input: {};
+  output?: string;
+} | {
+  /** Green Hat fork: add a task to the driving user's list. Omitted fields are unset. */
+  toolName: "addTask";
+  input: {
+    title: string;
+    notes?: string;
+    /** `YYYY-MM-DD`; omitted means "someday". */
+    dueDate?: string;
+    priority?: TaskPriority;
+    tag?: string;
+  };
+  output?: string;
+} | {
+  /**
+   * Green Hat fork: change one of the driving user's tasks, marking it done included. Omitted
+   * fields are unchanged; an empty `dueDate` or `tag` clears it, and `priority` "none" clears that.
+   */
+  toolName: "updateTask";
+  input: {
+    id: string;
+    title?: string;
+    notes?: string;
+    status?: TaskStatus;
+    dueDate?: string;
+    priority?: TaskPriority | "none";
+    tag?: string;
+  };
+  output?: string;
+} | {
+  /** Green Hat fork: delete one of the driving user's tasks. */
+  toolName: "deleteTask";
+  input: { id: string };
+  output?: string;
 });
 
 // TODO: Extend AiToolCall for code-mode tool calls.

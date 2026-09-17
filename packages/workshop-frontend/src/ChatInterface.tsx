@@ -53,6 +53,7 @@ import {
   ArrowUpRight,
   Blueprint,
   GitBranch,
+  ListChecks,
 } from "@phosphor-icons/react";
 import { RpcStub, RpcTarget } from "capnweb";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -615,6 +616,14 @@ function getToolCallSummary(
       return { verb: "Observed user changes" };
     case "listBlueprints":
       return { verb: "Listed blueprints" };
+    case "listTasks":
+      return { verb: "Read the task list" };
+    case "addTask":
+      return { verb: "Added a task", target: tc.input.title };
+    case "updateTask":
+      return { verb: "Updated a task", target: tc.input.id };
+    case "deleteTask":
+      return { verb: "Deleted a task", target: tc.input.id };
     case "listConnectableResources":
       return { verb: "Listed connectable resources", target: tc.input.vendorId };
     case "requestConnection":
@@ -696,6 +705,14 @@ function describeToolCallCount(toolName: AiToolCall["toolName"], count: number):
       return count === 1 ? "Stopped" : `Stopped ${count} times`;
     case "listBlueprints":
       return `Listed blueprints`;
+    case "listTasks":
+      return "Read the task list";
+    case "addTask":
+      return `Added ${pluralize(count, "task")}`;
+    case "updateTask":
+      return `Updated ${pluralize(count, "task")}`;
+    case "deleteTask":
+      return `Deleted ${pluralize(count, "task")}`;
     case "listConnectableResources":
       return `Listed connectable resources`;
     case "requestConnection":
@@ -733,6 +750,11 @@ function getToolIcon(
       return GitBranch;
     case "listBlueprints":
       return Blueprint;
+    case "listTasks":
+    case "addTask":
+    case "updateTask":
+    case "deleteTask":
+      return ListChecks;
     case "observeUserChanges":
       return MagnifyingGlass;
     case "giveUp":
@@ -798,6 +820,10 @@ function getProvisionalToolVerb(toolName: AiToolCall["toolName"]): string {
     case "listBlueprints": return "Listing blueprints";
     case "listConnectableResources": return "Listing connectable resources";
     case "requestConnection": return "Requesting a connection";
+    case "listTasks": return "Reading the task list";
+    case "addTask": return "Adding a task";
+    case "updateTask": return "Updating a task";
+    case "deleteTask": return "Deleting a task";
   }
   const _exhaustive: never = toolName;
   return _exhaustive;
@@ -823,6 +849,10 @@ function describeProvisionalToolCount(toolName: AiToolCall["toolName"], count: n
     case "listBlueprints": return "Listing blueprints";
     case "listConnectableResources": return "Listing connectable resources";
     case "requestConnection": return `Requesting ${pluralize(count, "connection")}`;
+    case "listTasks": return "Reading the task list";
+    case "addTask": return `Adding ${pluralize(count, "task")}`;
+    case "updateTask": return `Updating ${pluralize(count, "task")}`;
+    case "deleteTask": return `Deleting ${pluralize(count, "task")}`;
   }
   const _exhaustive: never = toolName;
   return _exhaustive;

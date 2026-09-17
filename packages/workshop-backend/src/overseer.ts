@@ -46,6 +46,7 @@ import { chatChangeStatuses, foldProposedChanges, isCompactionTurn,
   type ChangeBatch } from "./agent-compaction";
 import { listFeaturedBlueprintsFromKv, readBlueprintContent, readBlueprintKvRecord, sanitizeBlueprintOutput } from "./blueprint-archive";
 import { WebFetchEnv } from "./web-fetch";
+import type { AgentTaskList } from "./tasks-agent";
 import { UserDurableObject, UserAiModelRecord, type UserChatContext, type WorkspaceOutputEntry } from "./user";
 import { AgentSpawnerBinding } from "./agent-spawner-binding";
 import { recordAnalytics } from "./analytics";
@@ -9652,6 +9653,19 @@ class OverseerImpl implements AgentHooks {
   // libraries are per-user, so this lists the initiator's -- a collaborator driving the agent gets
   // their own library, not the workspace owner's. There is no search index; these corpora are
   // small, so the formatted text is handed to the model to scan directly.
+  // Green Hat fork: the driving user's task list, resolved like listAvailableBlueprints below. A
+  // fresh stub per call, like #ownerUserDo(), so a broken one is never held.
+  getTaskList(initiator: AiChatAuthorInfo): AgentTaskList {
+    let user = () => wrapDoStubForTelemetry(
+        this.users.get(this.users.idFromName(initiator.id)), this.logger);
+    return {
+      list: () => user().listTasks(),
+      create: (input) => user().createTask(input),
+      update: (id, patch) => user().updateTask(id, patch),
+      delete: (id) => user().deleteTask(id),
+    };
+  }
+
   async listAvailableBlueprints(initiator: AiChatAuthorInfo): Promise<string> {
     // User DOs are named by user identifier, and `initiator.id` is one: the initiating user for
     // "user" turns, the spawning gadget's owner for "gadget" turns (see AiChatAuthorInfo) -- the

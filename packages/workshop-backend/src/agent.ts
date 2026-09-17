@@ -14,6 +14,11 @@ import {
 import { RpcStub as NativeRpcStub } from "cloudflare:workers";
 import { createTwoFilesPatch, FILE_HEADERS_ONLY } from "diff";
 import { webFetch as webFetchImpl, WebFetchEnv, formatWebFetchResult } from "./web-fetch";
+import {
+  type AgentTaskList, ADD_TASK_TOOL_DESCRIPTION, DELETE_TASK_TOOL_DESCRIPTION,
+  LIST_TASKS_TOOL_DESCRIPTION, TASK_LIST_PROMPT, UPDATE_TASK_TOOL_DESCRIPTION, describeTask,
+  formatTaskList, newTaskFromToolInput, patchFromToolInput,
+} from "./tasks-agent";
 import { AgentCatalogSnapshot, formatAlwaysAvailableResourcesPrompt } from "./agent-catalog";
 import { formatInstanceInstructions } from "./admin-config";
 import type { AiGatewayLogRoute } from "./ai-gateway";
@@ -591,6 +596,13 @@ export interface AgentHooks {
   getWebFetchEnv(): WebFetchEnv;
 
   /**
+   * Green Hat fork: the task list of the user driving the turn, for the task tools. Resolved
+   * from the initiator the way listAvailableBlueprints resolves it: the driving user for "user"
+   * turns, the spawning gadget's owner for "gadget" turns.
+   */
+  getTaskList(initiator: AiChatAuthorInfo): AgentTaskList;
+
+  /**
    * Deployment-wide, admin-authored instructions to append to the agent's system prompt. Returns
    * "" when none are set. Read on each turn so admin edits take effect promptly.
    */
@@ -875,6 +887,8 @@ export default async function(self, env, ctx) {
 \`\`\`
 
 The call to \`env.MY_GADGET[restore](params)\` is equivalent to calling \`this.ctx.restore(params)\` from within the Gadget itself. This returns a persistent stub which you can then use as a hook callback.
+
+${TASK_LIST_PROMPT}
 `.trim();
 
 let SPAWNER_SYSTEM_PROMPT = `
@@ -1924,6 +1938,10 @@ export async function runAgent(
                 case "listBlueprints":
                 case "listConnectableResources":
                 case "requestConnection":
+                case "listTasks":
+                case "addTask":
+                case "updateTask":
+                case "deleteTask":
                   toolOutput = {text: toolCall.output ?? ""};
                   break;
                 default:
@@ -3080,6 +3098,95 @@ export async function runAgent(
       execute: async (toolCallId) => {
         try {
           let output = await hooks.listAvailableBlueprints(initiator);
+          return toolResult(output, { output });
+        } catch (error) {
+          toolCallNotes.set(toolCallId, { error: toolErrorText(error) });
+          throw error;
+        }
+      }
+    }),
+
+    // Green Hat fork: the driving user's task list. Each records its text output so replay does
+    // not re-read or, worse, re-apply a change.
+    listTasks: defineTool({
+      name: "listTasks",
+      label: "Read task list",
+      description: LIST_TASKS_TOOL_DESCRIPTION,
+      parameters: Type.Object({}),
+      execute: async (toolCallId) => {
+        try {
+          let output = formatTaskList(await hooks.getTaskList(initiator).list(), new Date());
+          return toolResult(output, { output });
+        } catch (error) {
+          toolCallNotes.set(toolCallId, { error: toolErrorText(error) });
+          throw error;
+        }
+      }
+    }),
+
+    addTask: defineTool({
+      name: "addTask",
+      label: "Add task",
+      description: ADD_TASK_TOOL_DESCRIPTION,
+      parameters: Type.Object({
+        title: Type.String({description: "Short imperative title."}),
+        notes: Type.Optional(Type.String({description: "Details worth keeping with the task."})),
+        dueDate: Type.Optional(Type.String({description: "YYYY-MM-DD. Omit for someday."})),
+        priority: Type.Optional(Type.Union([
+          Type.Literal("high"), Type.Literal("medium"), Type.Literal("low"),
+        ])),
+        tag: Type.Optional(Type.String({description: "Project or area, e.g. Audit, Sales."})),
+      }),
+      execute: async (toolCallId, input) => {
+        try {
+          let task = await hooks.getTaskList(initiator).create(newTaskFromToolInput(input));
+          let output = `Added: ${describeTask(task)}`;
+          return toolResult(output, { output });
+        } catch (error) {
+          toolCallNotes.set(toolCallId, { error: toolErrorText(error) });
+          throw error;
+        }
+      }
+    }),
+
+    updateTask: defineTool({
+      name: "updateTask",
+      label: "Update task",
+      description: UPDATE_TASK_TOOL_DESCRIPTION,
+      parameters: Type.Object({
+        id: Type.String({description: "The task id from listTasks."}),
+        title: Type.Optional(Type.String()),
+        notes: Type.Optional(Type.String()),
+        status: Type.Optional(Type.Union([Type.Literal("open"), Type.Literal("done")])),
+        dueDate: Type.Optional(Type.String({description: "YYYY-MM-DD, or \"\" to make it someday."})),
+        priority: Type.Optional(Type.Union([
+          Type.Literal("high"), Type.Literal("medium"), Type.Literal("low"), Type.Literal("none"),
+        ])),
+        tag: Type.Optional(Type.String({description: "Project or area, or \"\" to clear."})),
+      }),
+      execute: async (toolCallId, input) => {
+        try {
+          let task = await hooks.getTaskList(initiator).update(input.id, patchFromToolInput(input));
+          let output = `Updated: ${describeTask(task)}`;
+          return toolResult(output, { output });
+        } catch (error) {
+          toolCallNotes.set(toolCallId, { error: toolErrorText(error) });
+          throw error;
+        }
+      }
+    }),
+
+    deleteTask: defineTool({
+      name: "deleteTask",
+      label: "Delete task",
+      description: DELETE_TASK_TOOL_DESCRIPTION,
+      parameters: Type.Object({
+        id: Type.String({description: "The task id from listTasks."}),
+      }),
+      execute: async (toolCallId, {id}) => {
+        try {
+          await hooks.getTaskList(initiator).delete(id);
+          let output = `Deleted task ${id}.`;
           return toolResult(output, { output });
         } catch (error) {
           toolCallNotes.set(toolCallId, { error: toolErrorText(error) });
