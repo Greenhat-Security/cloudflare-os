@@ -92,6 +92,11 @@ declare global {
       // Minimum connected-account balance (USD) to proceed via BYOK. Defaults to
       // MINIMUM_CLOUDFLARE_BALANCE.
       MINIMUM_CLOUDFLARE_BALANCE?: string;
+
+      // Green Hat fork: the bearer an automation presents to `POST /api/tasks/import` to push
+      // tasks from other tools onto users' lists (see tasks-import.ts). A Worker secret; unset
+      // means the endpoint answers 503 and nothing can import.
+      TASKS_IMPORT_TOKEN?: string;
     }
   }
 }

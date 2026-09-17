@@ -1,5 +1,15 @@
 import { RpcStub } from "capnweb";
-import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, AUTH_ERROR_CODES, createAuthError } from '@gadgets/workshop-shared/api';
+import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, AUTH_ERROR_CODES, createAuthError, MAX_TASKS_PER_USER, TASK_COMPLETED_RETENTION_DAYS, NewTaskInput, TaskInfo, TaskPatch } from '@gadgets/workshop-shared/api';
+import {
+  type ImportedTask,
+  type TaskImportCounts,
+  type TaskRecord,
+  applyTaskPatch,
+  importedTaskId,
+  newOsTask,
+  reconcileImportedTask,
+  toTaskInfo,
+} from "./tasks.js";
 import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, AccountDetails, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
@@ -241,6 +251,14 @@ function makeUserStorage(storage: DurableObjectStorage) {
         primaryKey: record => `${record.workspaceId}:${record.workpieceId}`,
         nonUniqueIndexes: {
           byWorkspace(record: OutputRecord) { return record.workspaceId; },
+        },
+      }),
+      // Green Hat fork: the user's task list. Imported tasks are keyed `<source>:<external id>`;
+      // the index is what lets one source's sync replace exactly its own entries.
+      tasks: collection<TaskRecord>()({
+        primaryKey: "id",
+        nonUniqueIndexes: {
+          bySource(record: TaskRecord) { return record.source; },
         },
       }),
     },
@@ -894,6 +912,108 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   async deleteGadget(id: string): Promise<void> {
     this.storage.gadgets.delete(id);
     this.storage.outputs.byWorkspace.delete(id);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Tasks (Green Hat fork). The rules live in tasks.ts; this is the storage.
+  // ---------------------------------------------------------------------------------------------
+
+  async listTasks(): Promise<TaskInfo[]> {
+    this.#pruneCompletedTasks(new Date());
+    return Array.from(this.storage.tasks.list(), toTaskInfo);
+  }
+
+  async createTask(input: NewTaskInput): Promise<TaskInfo> {
+    this.#requireTaskCapacity(1);
+    let task = newOsTask(crypto.randomUUID(), input, new Date());
+    this.storage.tasks.put(task);
+    return toTaskInfo(task);
+  }
+
+  async updateTask(id: string, patch: TaskPatch): Promise<TaskInfo> {
+    let task = this.storage.tasks.get(id);
+    if (!task) throw new Error("No such task.");
+    let next = applyTaskPatch(task, patch, new Date());
+    this.storage.tasks.put(next);
+    return toTaskInfo(next);
+  }
+
+  async deleteTask(id: string): Promise<void> {
+    this.storage.tasks.delete(id);
+  }
+
+  async clearCompletedTasks(): Promise<number> {
+    let removed = 0;
+    // Materialised first: the list iterator is invalidated by a write.
+    for (let task of Array.from(this.storage.tasks.list())) {
+      if (task.status === "done") {
+        this.storage.tasks.delete(task.id);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * One source's sync, from the import endpoint. Returns null when there is no account here (the
+   * endpoint reports the address rather than creating one for a typo). With `replace`, tasks of
+   * this source that the payload no longer lists are deleted: the source closed or reassigned
+   * them. Other sources' tasks and the user's own are never touched.
+   */
+  async importTasks(source: string, sourceLabel: string | null, items: ImportedTask[],
+                    replace: boolean): Promise<TaskImportCounts | null> {
+    if (!this.storage.created.get()) return null;
+
+    let now = new Date();
+    let existingFromSource = Array.from(this.storage.tasks.bySource.get(source));
+    let counts: TaskImportCounts = { created: 0, updated: 0, removed: 0, kept: 0 };
+
+    // Capacity is checked against the list as it will be after the sync, so a source that
+    // shrinks can always sync even when the list is full.
+    let seen = new Set<string>();
+    for (let item of items) seen.add(importedTaskId(source, item.externalId));
+    let retainedFromSource = replace ? 0 :
+        existingFromSource.filter(task => !seen.has(task.id)).length;
+    this.#requireTaskCapacity(seen.size + retainedFromSource - existingFromSource.length);
+
+    for (let item of items) {
+      let id = importedTaskId(source, item.externalId);
+      let existing = this.storage.tasks.get(id);
+      let next = reconcileImportedTask(existing, id, source, sourceLabel, item, now);
+      if (next === null) {
+        if (existing?.localEditedAt) counts.kept++;
+        continue;
+      }
+      this.storage.tasks.put(next);
+      if (existing) counts.updated++; else counts.created++;
+    }
+
+    if (replace) {
+      for (let task of existingFromSource) {
+        if (seen.has(task.id)) continue;
+        this.storage.tasks.delete(task.id);
+        counts.removed++;
+      }
+    }
+    return counts;
+  }
+
+  #requireTaskCapacity(additional: number): void {
+    let total = 0;
+    for (let _task of this.storage.tasks.list()) total++;
+    if (total + additional > MAX_TASKS_PER_USER) {
+      throw new Error(`The task list holds at most ${MAX_TASKS_PER_USER} tasks; ` +
+          `clear completed tasks or delete some first.`);
+    }
+  }
+
+  #pruneCompletedTasks(now: Date): void {
+    let cutoff = now.valueOf() - TASK_COMPLETED_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    for (let task of Array.from(this.storage.tasks.list())) {
+      if (task.status === "done" && task.completedAt && task.completedAt.valueOf() < cutoff) {
+        this.storage.tasks.delete(task.id);
+      }
+    }
   }
 
   /**

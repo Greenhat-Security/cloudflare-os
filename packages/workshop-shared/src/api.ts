@@ -702,6 +702,35 @@ export interface AuthenticatedApi extends RpcTarget {
    */
   getGatekeeperApp(id: string): Promise<GatekeeperUiFrame | null>;
 
+  // --- Tasks (Green Hat fork) ---
+
+  /**
+   * Every task on the user's list: the ones they created here and the ones their other tools
+   * pushed in through the Workshop's task import endpoint. Unordered; the client groups and sorts.
+   * Completed tasks older than TASK_COMPLETED_RETENTION_DAYS are pruned on the way out.
+   */
+  listTasks(): Promise<TaskInfo[]>;
+
+  /** Create a task on the user's own list (source OS_TASK_SOURCE). */
+  createTask(input: NewTaskInput): Promise<TaskInfo>;
+
+  /**
+   * Change a task. Fields absent from the patch are unchanged; a nullable field set to null is
+   * cleared. Marking a task done stamps `completedAt`, reopening clears it. Imported tasks can be
+   * edited too, but their source system remains authoritative: the next import overwrites the
+   * edit unless the importer dates its records and the local edit is the more recent one.
+   */
+  updateTask(id: string, patch: TaskPatch): Promise<TaskInfo>;
+
+  /**
+   * Delete a task. Idempotent. An imported task comes back on the next import unless its source
+   * dropped it as well.
+   */
+  deleteTask(id: string): Promise<void>;
+
+  /** Delete every completed task, returning how many were removed. */
+  clearCompletedTasks(): Promise<number>;
+
   // --- Deployment admin ---
 
   /**
@@ -734,6 +763,91 @@ export type GatekeeperAppInfo = {
   title: string;
   /** Optional icon. */
   icon?: AvatarImage;
+};
+
+// ---------------------------------------------------------------------------
+// Tasks (Green Hat fork)
+// ---------------------------------------------------------------------------
+//
+// A per-user to-do list, shown on Home. Two kinds of entry share it: tasks the user creates in the
+// OS (source OS_TASK_SOURCE) and tasks pushed in from Green Hat's other tools by an automation
+// calling the Workshop's `POST /api/tasks/import` endpoint (source = that tool's id, e.g. "crm").
+// Imported entries keep a link back to the record they came from, and that system stays the place
+// where the work is actually done; the OS list is the one view across all of them.
+
+/** How urgent a task is. Rendered as the coloured flag on a row; null means unranked. */
+export type TaskPriority = "high" | "medium" | "low";
+
+/** Every TaskPriority, most urgent first. */
+export const TASK_PRIORITIES: TaskPriority[] = ["high", "medium", "low"];
+
+/** Whether a task is still open. */
+export type TaskStatus = "open" | "done";
+
+/** Source id of tasks created in the OS itself. Imported tasks carry the importing tool's id. */
+export const OS_TASK_SOURCE = "os";
+
+/** Longest title accepted for a task, in characters. */
+export const MAX_TASK_TITLE_LENGTH = 200;
+
+/** Longest free-text notes accepted for a task, in characters. */
+export const MAX_TASK_NOTES_LENGTH = 4000;
+
+/** Longest tag accepted for a task, in characters. */
+export const MAX_TASK_TAG_LENGTH = 40;
+
+/** Most tasks one user's list holds, open and completed together. */
+export const MAX_TASKS_PER_USER = 1000;
+
+/** Completed tasks are dropped this many days after they were completed. */
+export const TASK_COMPLETED_RETENTION_DAYS = 30;
+
+/** A task as the client sees it. */
+export type TaskInfo = {
+  /** Stable id: random for OS tasks, `<source>:<external id>` for imported ones. */
+  id: string;
+  title: string;
+  /** Free-text notes; empty when there are none. */
+  notes: string;
+  status: TaskStatus;
+  priority: TaskPriority | null;
+  /**
+   * Due date as a calendar date, `YYYY-MM-DD`, read in whatever timezone the viewer is in; null
+   * means "someday". No time of day: the list groups by day, not by hour.
+   */
+  dueDate: string | null;
+  /** A short label such as a project or area ("Audit", "Sales"); null when there is none. */
+  tag: string | null;
+  /** Where the task came from: OS_TASK_SOURCE, or the importing tool's id. */
+  source: string;
+  /** Display name of the source system as the importer gave it; null for OS tasks. */
+  sourceLabel: string | null;
+  /** Link to the task in its source system; null when there is none. */
+  url: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  /** When the task was marked done; null while it is open. */
+  completedAt: Date | null;
+};
+
+/** What the user supplies to create a task in the OS. */
+export type NewTaskInput = {
+  title: string;
+  notes?: string;
+  priority?: TaskPriority | null;
+  /** `YYYY-MM-DD`, or null / absent for "someday". */
+  dueDate?: string | null;
+  tag?: string | null;
+};
+
+/** A change to a task. Absent fields are unchanged; a nullable field set to null is cleared. */
+export type TaskPatch = {
+  title?: string;
+  notes?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority | null;
+  dueDate?: string | null;
+  tag?: string | null;
 };
 
 // ---------------------------------------------------------------------------

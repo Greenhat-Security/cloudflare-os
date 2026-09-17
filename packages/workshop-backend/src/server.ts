@@ -1,7 +1,7 @@
 import { RpcStub, RpcTarget, newHttpBatchRpcResponse, newWebSocketRpcSession, RpcSessionOptions } from "capnweb";
 import { validateRpc } from "capnweb-validate";
 import type { JWTPayload } from "jose";
-import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError } from '@gadgets/workshop-shared/api';
+import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError, NewTaskInput, TaskInfo, TaskPatch } from '@gadgets/workshop-shared/api';
 import type { UiFeatureFlags } from "@gadgets/workshop-shared/feature-flags";
 import { getServerConfig } from "./deployment-config.js";
 import { isPasswordAuthEnabled, getAuthGatekeeperAllowlist } from "./auth/config.js";
@@ -29,6 +29,7 @@ import { ExternalMessageGateway } from "./external-message-gateway";
 import { RpcStub as NativeRpcStub } from "cloudflare:workers";
 import { recordAnalytics } from "./analytics";
 import { handleClientErrorRequest } from "./client-errors.js";
+import { handleTaskImportRequest, TASK_IMPORT_PATH } from "./tasks-import.js";
 import { verifyCfAccessJwt } from "./access.js";
 import { resolveUiFeatureFlags } from "./feature-flags";
 import { serveSiteLogo, SITE_LOGO_PATH } from "./site-logo.js";
@@ -307,6 +308,23 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
 
   listOutputs(): Promise<ListOutputsResult> {
     return this.#user.listOutputs();
+  }
+
+  // Tasks (Green Hat fork).
+  listTasks(): Promise<TaskInfo[]> {
+    return retryOnDoReset(() => this.#user.listTasks());
+  }
+  createTask(input: NewTaskInput): Promise<TaskInfo> {
+    return this.#user.createTask(input);
+  }
+  updateTask(id: string, patch: TaskPatch): Promise<TaskInfo> {
+    return this.#user.updateTask(id, patch);
+  }
+  deleteTask(id: string): Promise<void> {
+    return this.#user.deleteTask(id);
+  }
+  clearCompletedTasks(): Promise<number> {
+    return this.#user.clearCompletedTasks();
   }
 
   async listOutputFormats(): Promise<OutputFormatOffer[]> {
@@ -820,6 +838,12 @@ export default {
 
     if (url.pathname === "/api/client-errors") {
       return handleClientErrorRequest(req, env, ctx);
+    }
+
+    // Green Hat fork: automations push tasks from other tools onto users' lists. Its own auth
+    // (bearer secret plus the Access assertion), no RPC session; see tasks-import.ts.
+    if (url.pathname === TASK_IMPORT_PATH) {
+      return handleTaskImportRequest(req, env, ctx.exports.UserDurableObject);
     }
 
     if (url.pathname === "/api") {

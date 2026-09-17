@@ -50,6 +50,8 @@ vi.mock("./features/chat/composer/ChatComposer", () => ({
 
 vi.mock("./components/MeshBackground", () => ({ default: () => null }));
 vi.mock("./components/AppShell/HomeTaskSuggestions", () => ({ default: () => null }));
+// Green Hat fork: the task list has its own tests and its own RPC surface.
+vi.mock("./tasks/TaskList", () => ({ default: () => null }));
 vi.mock("./useDocumentTitle", () => ({ useDocumentTitle: () => {} }));
 
 import { HomePageContent } from "./routes/index";

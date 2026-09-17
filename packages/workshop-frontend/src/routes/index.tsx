@@ -5,6 +5,7 @@ import { useKumoToastManager } from "@cloudflare/kumo";
 import { ChatComposer } from "../features/chat/composer/ChatComposer";
 import MeshBackground from "../components/MeshBackground";
 import HomeTaskSuggestions from "../components/AppShell/HomeTaskSuggestions";
+import TaskList from "../tasks/TaskList";
 import { useAuthenticatedApi } from "../AuthContext";
 import { RpcStub } from "capnweb";
 import {
@@ -170,6 +171,10 @@ export function HomePageContent({ prompt }: HomeSearch) {
         <MeshBackground />
       </div>
       <div className="flex w-full max-w-2xl flex-col items-stretch gap-8">
+        {/* Green Hat fork: the day's work first. Tasks typed here and tasks pushed in from the
+            other Green Hat tools, above the composer that acts on them. */}
+        <TaskList />
+
         {/* Hero */}
         <header className="text-center">
           <h1 className="text-3xl font-semibold tracking-tight leading-tight text-kumo-default sm:text-4xl">
