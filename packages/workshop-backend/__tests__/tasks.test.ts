@@ -11,6 +11,7 @@ import {
   normalizeTaskUrl,
   reconcileImportedTask,
   sameTaskContent,
+  taskChangeFromPatch,
   toTaskInfo,
   type TaskRecord,
 } from "../src/tasks.js";
@@ -143,6 +144,22 @@ describe("reconcileImportedTask", () => {
   it("rejects an unparseable updatedAt rather than treating it as absent", () => {
     expect(() => reconcileImportedTask(undefined, "crm:42", "crm", null,
         { ...item, updatedAt: "yesterday" }, T0)).toThrow(/ISO 8601/);
+  });
+});
+
+describe("taskChangeFromPatch", () => {
+  it("names only what changed on a mirrored task, and nothing for an OS task", () => {
+    let mirrored = reconcileImportedTask(undefined, "crm:42", "crm", null,
+        { externalId: "42", title: "Call Archie", dueDate: "2026-09-20" }, T0)!;
+    let done = applyTaskPatch(mirrored, { status: "done" }, T1);
+    expect(taskChangeFromPatch(done, { status: "done" }))
+        .toEqual({ source: "crm", externalId: "42", status: "done" });
+    let moved = applyTaskPatch(done, { dueDate: null, title: "Call Archie back", priority: "high" }, T2);
+    expect(taskChangeFromPatch(moved, { dueDate: null, title: "Call Archie back", priority: "high" }))
+        .toEqual({ source: "crm", externalId: "42", title: "Call Archie back", dueDate: null });
+    // Priority and tag have no home in any source: nothing to write back.
+    expect(taskChangeFromPatch(moved, { priority: "low", tag: "Sales" })).toBeNull();
+    expect(taskChangeFromPatch(osTask(), { status: "done" })).toBeNull();
   });
 });
 

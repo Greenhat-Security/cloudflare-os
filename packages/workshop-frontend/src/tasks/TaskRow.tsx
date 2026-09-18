@@ -9,6 +9,7 @@ import {
   PencilSimple,
   Tag,
   Trash,
+  WarningCircle,
 } from '@phosphor-icons/react'
 import { OS_TASK_SOURCE, type TaskInfo, type TaskPatch, type TaskPriority } from '@gadgets/workshop-shared/api'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from '../components/menuStyles'
@@ -123,6 +124,15 @@ export default function TaskRow({
           {imported && (
             <span className="inline-flex items-center rounded-sm border border-kumo-line px-1 text-[10px] font-medium uppercase leading-4 tracking-[0.04em] text-kumo-inactive">
               {describeTaskSource(task)}
+            </span>
+          )}
+          {task.writeBackError && (
+            <span
+              className="inline-flex items-center gap-1 text-[12px] leading-4 tracking-[-0.2px] text-kumo-warning"
+              title={task.writeBackError}
+            >
+              <WarningCircle size={12} weight="fill" />
+              Not saved to {describeTaskSource(task)}
             </span>
           )}
         </div>

@@ -839,6 +839,12 @@ export type TaskInfo = {
   updatedAt: Date;
   /** When the task was marked done; null while it is open. */
   completedAt: Date | null;
+  /**
+   * For a task from another system: why the last change made here could not be written back to
+   * it (the system refused, or could not be reached). Absent when the last change went through
+   * or no write-back was attempted.
+   */
+  writeBackError?: string;
 };
 
 /** What the user supplies to create a task in the OS. */

@@ -97,6 +97,12 @@ declare global {
       // tasks from other tools onto users' lists (see tasks-import.ts). A Worker secret; unset
       // means the endpoint answers 503 and nothing can import.
       TASKS_IMPORT_TOKEN?: string;
+
+      // Green Hat fork: the Worker that syncs tasks from other systems, reached after a user
+      // edits a mirrored task so the change is written back there (user.ts #writeBackTask).
+      // Bound by the deployment when that Worker exists; absent, edits stay local.
+      TASK_WRITEBACK?: Fetcher &
+        import("@gadgets/workshop-shared/task-import-gateway").TaskWriteBackGateway;
     }
   }
 }

@@ -8,8 +8,10 @@ import {
   normalizeTaskSource,
   normalizeTaskSourceLabel,
   reconcileImportedTask,
+  taskChangeFromPatch,
   toTaskInfo,
 } from "./tasks.js";
+import type { TaskChange } from "@gadgets/workshop-shared/task-import-gateway";
 import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, AccountDetails, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
@@ -935,7 +937,43 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     if (!task) throw new Error("No such task.");
     let next = applyTaskPatch(task, patch, new Date());
     this.storage.tasks.put(next);
+    // A task from another system: tell that system, after the local change is durable. The
+    // caller does not wait for it; the outcome lands on the record (see #writeBackTask).
+    let change = taskChangeFromPatch(next, patch);
+    if (change && this.env.TASK_WRITEBACK) {
+      this.ctx.waitUntil(this.#writeBackTask(id, change));
+    }
     return toTaskInfo(next);
+  }
+
+  /**
+   * Hand one change to the syncing Worker and record what came of it on the task, so the row can
+   * say when the source refused. A source with no write-back is not an error.
+   */
+  async #writeBackTask(id: string, change: TaskChange): Promise<void> {
+    let error: string | undefined;
+    try {
+      let result = await this.env.TASK_WRITEBACK!.pushTaskChange(change);
+      if (!result.written) {
+        logger.info(`task change to ${change.source} not written back: ${result.reason ?? "no reason"}`, {
+          event: "tasks.writeback.skipped",
+        });
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      logger.warn(`task change refused by ${change.source}`, {
+        event: "tasks.writeback.failed", error: err,
+      });
+    }
+    let current = this.storage.tasks.get(id);
+    if (!current) return;
+    if (error === undefined) {
+      if (current.writeBackError === undefined) return;
+      delete current.writeBackError;
+    } else {
+      current.writeBackError = error;
+    }
+    this.storage.tasks.put(current);
   }
 
   async deleteTask(id: string): Promise<void> {

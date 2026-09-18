@@ -17,6 +17,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "@gadgets/workshop-shared/api";
+import type { TaskChange } from "@gadgets/workshop-shared/task-import-gateway";
 
 /** `YYYY-MM-DD`; the calendar check is in normalizeTaskDueDate. */
 export const TASK_DUE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -238,6 +239,24 @@ export function sameTaskContent(a: TaskRecord, b: TaskRecord): boolean {
       // An unchanged record that still carries a local edit must lose it once the source has
       // caught up, so that a future sync is not silently ignored.
       a.localEditedAt === undefined;
+}
+
+/**
+ * The part of a patch that a task's source system should hear about: only the fields the patch
+ * set, and only those the sources have an equivalent for. Null when nothing needs writing back
+ * (an OS task, or a patch that touched only priority or tag).
+ */
+export function taskChangeFromPatch(task: TaskRecord, patch: TaskPatch): TaskChange | null {
+  if (task.source === OS_TASK_SOURCE) return null;
+  let externalId = task.id.slice(task.source.length + 1);
+  if (!externalId) return null;
+  let change: TaskChange = { source: task.source, externalId };
+  let any = false;
+  if (patch.title !== undefined) { change.title = task.title; any = true; }
+  if (patch.status !== undefined) { change.status = task.status; any = true; }
+  if (patch.dueDate !== undefined) { change.dueDate = task.dueDate; any = true; }
+  if (patch.notes !== undefined) { change.notes = task.notes; any = true; }
+  return any ? change : null;
 }
 
 /** What the client is shown: the stored record minus the reconciliation timestamps. */
