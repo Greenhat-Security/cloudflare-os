@@ -13,10 +13,6 @@ vi.mock('./CommandPalette', () => ({ default: () => null }))
 vi.mock('./Sidebar', () => ({
   default: () => <aside data-testid="sidebar" />,
 }))
-// Green Hat fork: the module rail has its own test and needs the router's Link, mocked away above.
-vi.mock('./ModuleRail', () => ({
-  default: () => <aside data-testid="module-rail" />,
-}))
 
 import AppShell from './AppShell'
 

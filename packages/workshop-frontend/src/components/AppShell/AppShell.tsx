@@ -5,7 +5,6 @@ import TopBarNotice from '../../TopBarNotice'
 import ReconnectingChip from '../ReconnectingChip'
 import { useConnectionLost } from '../../RpcContext'
 import Sidebar from './Sidebar'
-import ModuleRail from './ModuleRail'
 import CommandPalette from './CommandPalette'
 import { OPEN_COMMAND_PALETTE_EVENT } from './commandPaletteBus'
 
@@ -110,9 +109,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-kumo-base">
       {/* Desktop sidebar — hidden on mobile in favor of the drawer. Green Hat fork: the module
-          rail (the other Green Hat tools) sits outside it, at the far left, as in the tools. */}
+          rail (the other Green Hat tools) sits outside this shell, in the root route, so it is
+          also there on the fullscreen workspace editor. */}
       <div className="hidden h-full md:flex">
-        <ModuleRail />
         <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       </div>
 

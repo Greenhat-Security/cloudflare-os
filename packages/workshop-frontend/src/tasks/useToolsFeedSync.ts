@@ -20,6 +20,9 @@ export function useToolsFeedSync(onSynced: () => void) {
   onSyncedRef.current = onSynced
 
   useEffect(() => {
+    // The tools answer only the deployed OS origin; a dev build on localhost would just fill the
+    // console with CORS refusals.
+    if (window.location.protocol !== 'https:') return
     let cancelled = false
     let inFlight = false
 

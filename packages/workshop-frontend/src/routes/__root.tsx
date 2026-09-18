@@ -10,6 +10,7 @@ import { AuthProvider } from '../AuthContext'
 import { FeatureFlagsProvider } from '../FeatureFlagsContext'
 import Header from '../components/Header'
 import AppShell from '../components/AppShell/AppShell'
+import ModuleRail from '../components/AppShell/ModuleRail'
 import LoginPage from '../LoginPage'
 import OnboardingWizard from '../OnboardingWizard'
 import AccountSelectionModal from '../components/billing/AccountSelectionModal'
@@ -165,19 +166,30 @@ function AuthenticatedShell({
   // Normal app shell. The workspace editor is rendered fullscreen (no chrome); everything else
   // gets the persistent left-rail AppShell. Connection loss is surfaced by a chip in whichever of
   // those two top bars is showing, never by a banner that reflows the page (see ReconnectingChip).
+  //
+  // Green Hat fork: the module rail (the other Green Hat tools) sits outside both, at the far left
+  // of every signed-in page, the workspace editor included, so switching product never depends on
+  // where in the OS you are. Desktop only, as in the tools.
   const fullscreen = isWorkspaceEditor
   return (
     <>
       <AccountSelectionModal />
-      {fullscreen ? (
-        <main className="h-full min-h-0">
-          <Outlet />
-        </main>
-      ) : (
-        <AppShell>
-          <Outlet />
-        </AppShell>
-      )}
+      <div className="flex h-full min-h-0 w-full overflow-hidden bg-kumo-base">
+        <div className="hidden h-full shrink-0 md:flex">
+          <ModuleRail />
+        </div>
+        <div className="h-full min-h-0 min-w-0 flex-1">
+          {fullscreen ? (
+            <main className="h-full min-h-0">
+              <Outlet />
+            </main>
+          ) : (
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          )}
+        </div>
+      </div>
     </>
   )
 }
