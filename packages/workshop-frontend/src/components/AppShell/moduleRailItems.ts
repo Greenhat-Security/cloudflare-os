@@ -1,10 +1,11 @@
 // The module rail's contents (Green Hat fork): the same list greenhat_tools shows in its
 // `CoreModuleRail`, with the OS itself at the top and every other entry pointing at the tool's
-// home on tools.greenhatsec.com. Kept as data so the rail component stays a plain list and a test
+// own home. Kept as data so the rail component stays a plain list and a test
 // can check the links without rendering logos.
 
 /** Where Green Hat's other tools live. */
 export const GREENHAT_TOOLS_ORIGIN = 'https://tools.greenhatsec.com'
+export const GREENPM_ORIGIN = 'https://pm.greenhatsec.com'
 
 export type ModuleRailItem = {
   id: string
@@ -17,7 +18,7 @@ export type ModuleRailItem = {
 export const MODULE_RAIL_ITEMS: ModuleRailItem[] = [
   { id: 'os', label: 'GreenhatOS', href: '/', logo: null },
   { id: 'daisy-notes', label: 'Daisy Notes', href: `${GREENHAT_TOOLS_ORIGIN}/daisy-notes`, logo: '/modules/daisy-notes.svg' },
-  { id: 'exponential', label: 'Exponential', href: `${GREENHAT_TOOLS_ORIGIN}/exponential`, logo: '/modules/exponential.png' },
+  { id: 'exponential', label: 'GreenPM', href: GREENPM_ORIGIN, logo: '/modules/exponential.png' },
   { id: 'greenbooks', label: 'GreenBooks', href: `${GREENHAT_TOOLS_ORIGIN}/greenbooks`, logo: '/modules/greenbooks.png' },
   { id: 'greenspot', label: 'GreenSpot', href: `${GREENHAT_TOOLS_ORIGIN}/greenspot`, logo: '/modules/greenspot.png' },
   // Greentype ships as its own app; greenhat_tools' rail links there once its cutover flag is

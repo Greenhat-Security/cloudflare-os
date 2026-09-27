@@ -29,7 +29,7 @@ describe('groupFeedRows', () => {
   it('maps every known module, skipping rows it cannot place', () => {
     const groups = groupFeedRows(FEED)
     expect(groups.map((g) => [g.source, g.sourceLabel, g.tasks.length])).toEqual([
-      ['exponential', 'Exponential', 1],
+      ['exponential', 'GreenPM', 1],
       ['greenspot', 'GreenSpot', 1],
       ['greentype', 'Greentype', 1],
     ])
@@ -40,7 +40,7 @@ describe('groupFeedRows', () => {
       status: 'open',
       dueDate: '2026-09-19',
       tag: 'Exponential v2',
-      url: 'https://tools.greenhatsec.com/exponential/tasks/exp-1',
+      url: 'https://pm.greenhatsec.com/exponential/tasks/exp-1',
       notes: 'EXP-12 · Exponential v2',
       updatedAt: '2026-09-16T18:30:00.000Z',
     })

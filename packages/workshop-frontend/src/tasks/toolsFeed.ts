@@ -1,12 +1,12 @@
 // The Green Hat tools' own task feed (Green Hat fork). tools.greenhatsec.com serves
-// `/api/my-tasks`: the signed-in user's open tasks across Exponential, GreenSpot and Greentype,
+// `/api/my-tasks`: the signed-in user's open tasks across GreenPM, GreenSpot and Greentype,
 // merged. The user's browser holds the session for it, so the OS reads the feed from the browser
 // and relays it into the user's list over RPC (`AuthenticatedApi.syncTasks`), one source per
 // module, replacing what each module listed last time. Nothing here needs a credential of its
 // own; a browser that is not signed in to the tools gets a refusal and the list is left alone.
 
 import type { TaskImportItem } from '@gadgets/workshop-shared/api'
-import { GREENHAT_TOOLS_ORIGIN } from '../components/AppShell/moduleRailItems'
+import { GREENHAT_TOOLS_ORIGIN, GREENPM_ORIGIN } from '../components/AppShell/moduleRailItems'
 
 /** Where the feed is read from. Fifty is the feed's own maximum. */
 export const TOOLS_FEED_URL = `${GREENHAT_TOOLS_ORIGIN}/api/my-tasks?limit=50`
@@ -42,8 +42,8 @@ type ModuleSpec = {
 // a task closed in the tool leaves the OS list on the next sync.
 const MODULES: Record<string, ModuleSpec> = {
   exponential: {
-    label: 'Exponential',
-    taskUrl: (id) => `${GREENHAT_TOOLS_ORIGIN}/exponential/tasks/${encodeURIComponent(id)}`,
+    label: 'GreenPM',
+    taskUrl: (id) => `${GREENPM_ORIGIN}/exponential/tasks/${encodeURIComponent(id)}`,
     tag: (projectName) => projectName,
   },
   greenspot: {
