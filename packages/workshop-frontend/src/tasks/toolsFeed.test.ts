@@ -40,7 +40,7 @@ describe('groupFeedRows', () => {
       status: 'open',
       dueDate: '2026-09-19',
       tag: 'Exponential v2',
-      url: 'https://pm.greenhatsec.com/exponential/tasks/exp-1',
+      url: 'https://pm.greenhatsec.com/tasks/exp-1',
       notes: 'EXP-12 · Exponential v2',
       updatedAt: '2026-09-16T18:30:00.000Z',
     })

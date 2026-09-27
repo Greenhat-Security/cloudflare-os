@@ -43,7 +43,7 @@ type ModuleSpec = {
 const MODULES: Record<string, ModuleSpec> = {
   exponential: {
     label: 'GreenPM',
-    taskUrl: (id) => `${GREENPM_ORIGIN}/exponential/tasks/${encodeURIComponent(id)}`,
+    taskUrl: (id) => `${GREENPM_ORIGIN}/tasks/${encodeURIComponent(id)}`,
     tag: (projectName) => projectName,
   },
   greenspot: {

@@ -132,14 +132,17 @@ describe("reconcileImportedTask", () => {
     expect(synced.sourceUpdatedAt).toEqual(new Date("2026-09-18T01:00:00Z"));
   });
 
-  it("refreshes GreenPM links and labels at the same source revision without overwriting local edits", () => {
+  it.each([
+    ["https://tools.greenhatsec.com/exponential/tasks/42", "Exponential"],
+    ["https://pm.greenhatsec.com/exponential/tasks/42", "GreenPM"],
+  ])("refreshes %s at the same source revision without overwriting local edits", (url, sourceLabel) => {
     let sourceItem = { ...item, updatedAt: T0.toISOString(),
-      url: "https://tools.greenhatsec.com/exponential/tasks/42" };
+      url };
     let existing = reconcileImportedTask(undefined, "exponential:42", "exponential",
-        "Exponential", sourceItem, T0)!;
+        sourceLabel, sourceItem, T0)!;
     let edited = applyTaskPatch(existing, { title: "Local title", notes: "Local notes", status: "done",
       priority: "high", dueDate: "2026-09-25", tag: "Personal" }, T1);
-    let migratedItem = { ...sourceItem, url: "https://pm.greenhatsec.com/exponential/tasks/42" };
+    let migratedItem = { ...sourceItem, url: "https://pm.greenhatsec.com/tasks/42" };
     let migrated = reconcileImportedTask(edited, "exponential:42", "exponential",
         "GreenPM", migratedItem, T2)!;
     expect(migrated).toEqual({ ...edited, url: migratedItem.url, sourceLabel: "GreenPM", updatedAt: T2 });
