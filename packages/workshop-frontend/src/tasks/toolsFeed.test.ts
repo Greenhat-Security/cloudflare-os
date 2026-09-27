@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { TOOLS_FEED_URL, fetchToolsFeed, groupFeedRows } from './toolsFeed'
+import { TOOLS_FEED_URL, GREENPM_FEED_URL, fetchToolsFeed, fetchGreenPMFeed, fetchTaskSources, groupFeedRows } from './toolsFeed'
 
 // The shape `/api/my-tasks` in greenhat_tools returns (see app/api/my-tasks/route.ts there).
 const FEED = [
@@ -78,5 +78,33 @@ describe('fetchToolsFeed', () => {
     await expect(fetchToolsFeed(async () => new Response('nope', { status: 401 }))).resolves.toBeNull()
     await expect(fetchToolsFeed(async () => { throw new TypeError('Failed to fetch') })).resolves.toBeNull()
     await expect(fetchToolsFeed(async () => new Response('{}', { status: 200 }))).resolves.toBeNull()
+  })
+})
+
+describe('owned GreenPM feed', () => {
+  const row = FEED[0]
+  it('reads only a complete, valid snapshot with the browser session', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ tasks: [row], complete: true }))
+    expect(await fetchGreenPMFeed(fetchImpl)).toEqual([row])
+    expect(fetchImpl).toHaveBeenCalledWith(GREENPM_FEED_URL, expect.objectContaining({ credentials: 'include', cache: 'no-store' }))
+    for (const body of [{ tasks: [] }, { tasks: [], complete: false }, { tasks: [row, row], complete: true }, { tasks: [{ id: 'x' }], complete: true }]) {
+      expect(await fetchGreenPMFeed(async () => Response.json(body))).toBeNull()
+    }
+    expect(await fetchGreenPMFeed(async () => new Response('', { status: 403 }))).toBeNull()
+  })
+  it('uses owned task IDs and clears only GreenPM after its successful empty snapshot', async () => {
+    const fetchImpl: typeof fetch = async url => url === GREENPM_FEED_URL
+      ? Response.json({ tasks: [], complete: true }) : Response.json({ tasks: FEED })
+    const groups = await fetchTaskSources(fetchImpl)
+    expect(groups.map(g => [g.source, g.tasks.length])).toEqual([['exponential', 0], ['greenspot', 1], ['greentype', 1]])
+  })
+  it('never falls back to stale legacy PM tasks or clears PM after failed reads', async () => {
+    const groups = await fetchTaskSources(async url => url === GREENPM_FEED_URL
+      ? new Response('', { status: 503 }) : Response.json({ tasks: FEED }))
+    expect(groups.map(g => g.source)).toEqual(['greenspot', 'greentype'])
+    const pmOnly = await fetchTaskSources(async url => url === GREENPM_FEED_URL
+      ? Response.json({ tasks: [row], complete: true }) : new Response('', { status: 500 }))
+    expect(pmOnly.map(g => g.source)).toEqual(['exponential'])
+    expect(pmOnly[0].tasks[0].externalId).toBe('exp-1')
   })
 })

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAuthenticatedApi } from '../AuthContext'
-import { fetchToolsFeed, groupFeedRows } from './toolsFeed'
+import { fetchTaskSources } from './toolsFeed'
 
 // A tab left open re-reads the feed when it comes back into view, but not more often than this:
 // the feed is the tools' database and every read ends in a write to the user's Durable Object,
@@ -30,11 +30,11 @@ export function useToolsFeedSync(onSynced: () => void) {
       if (inFlight || Date.now() - lastSyncAt.current < MIN_INTERVAL_MS) return
       inFlight = true
       try {
-        const rows = await fetchToolsFeed()
-        if (rows === null || cancelled) return
+        const groups = await fetchTaskSources()
+        if (!groups.length || cancelled) return
         lastSyncAt.current = Date.now()
         let changed = false
-        for (const group of groupFeedRows(rows)) {
+        for (const group of groups) {
           const counts = await authenticatedApi.syncTasks(
             group.source, group.sourceLabel, group.tasks, true)
           if (cancelled) return
@@ -54,9 +54,13 @@ export function useToolsFeedSync(onSynced: () => void) {
       if (document.visibilityState === 'visible') void sync()
     }
     document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    const timer = window.setInterval(onVisible, MIN_INTERVAL_MS)
     return () => {
       cancelled = true
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.clearInterval(timer)
     }
   }, [authenticatedApi])
 }

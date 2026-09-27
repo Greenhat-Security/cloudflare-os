@@ -1,6 +1,5 @@
-// The Green Hat tools' own task feed (Green Hat fork). tools.greenhatsec.com serves
-// `/api/my-tasks`: the signed-in user's open tasks across GreenPM, GreenSpot and Greentype,
-// merged. The user's browser holds the session for it, so the OS reads the feed from the browser
+// GreenPM owns its personal task feed; Tools still supplies GreenSpot and Greentype.
+// The user's browser holds the session, so the OS reads the feeds from the browser
 // and relays it into the user's list over RPC (`AuthenticatedApi.syncTasks`), one source per
 // module, replacing what each module listed last time. Nothing here needs a credential of its
 // own; a browser that is not signed in to the tools gets a refusal and the list is left alone.
@@ -10,6 +9,9 @@ import { GREENHAT_TOOLS_ORIGIN, GREENPM_ORIGIN } from '../components/AppShell/mo
 
 /** Where the feed is read from. Fifty is the feed's own maximum. */
 export const TOOLS_FEED_URL = `${GREENHAT_TOOLS_ORIGIN}/api/my-tasks?limit=50`
+
+/** Complete authorized GreenPM assignments, through its Cloudflare BFF and Gateway. */
+export const GREENPM_FEED_URL = `${GREENPM_ORIGIN}/api/exponential/my-tasks`
 
 /** One row of the feed, as far as this side reads it. Everything but `id` and `module` is optional. */
 export type ToolsFeedRow = {
@@ -128,6 +130,8 @@ export async function fetchToolsFeed(fetchImpl: typeof fetch = fetch): Promise<u
     const response = await fetchImpl(TOOLS_FEED_URL, {
       credentials: 'include',
       headers: { accept: 'application/json' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
     })
     if (!response.ok) return null
     const body = (await response.json()) as { tasks?: unknown }
@@ -135,4 +139,34 @@ export async function fetchToolsFeed(fetchImpl: typeof fetch = fetch): Promise<u
   } catch {
     return null
   }
+}
+
+/** Failed or partial GreenPM reads must not replace the user's saved task list. */
+export async function fetchGreenPMFeed(fetchImpl: typeof fetch = fetch): Promise<unknown[] | null> {
+  try {
+    const response = await fetchImpl(GREENPM_FEED_URL, {
+      credentials: 'include', headers: { accept: 'application/json' },
+      cache: 'no-store', signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok) return null
+    const body = await response.json() as { tasks?: unknown; complete?: unknown }
+    if (body.complete !== true || !Array.isArray(body.tasks) || body.tasks.length > 500) return null
+    const ids = new Set<string>()
+    for (const row of body.tasks) {
+      if (!row || typeof row !== 'object' || row.module !== 'exponential' ||
+          typeof row.id !== 'string' || !row.id || ids.has(row.id) ||
+          typeof row.title !== 'string' || !row.title.trim()) return null
+      ids.add(row.id)
+    }
+    return body.tasks
+  } catch { return null }
+}
+
+/** Replace only sources whose own feed succeeded; never fall back to legacy GreenPM rows. */
+export async function fetchTaskSources(fetchImpl: typeof fetch = fetch): Promise<ToolsFeedSource[]> {
+  const [pm, legacy] = await Promise.all([fetchGreenPMFeed(fetchImpl), fetchToolsFeed(fetchImpl)])
+  return [
+    ...(pm === null ? [] : groupFeedRows(pm).filter(group => group.source === 'exponential')),
+    ...(legacy === null ? [] : groupFeedRows(legacy).filter(group => group.source !== 'exponential')),
+  ]
 }
