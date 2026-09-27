@@ -146,6 +146,21 @@ describe("UserDurableObject tasks", () => {
     expect((await user.listTasks())[0].status).toBe("open");
   });
 
+  it("persists GreenPM source metadata without losing a local task edit", async () => {
+    let user = await makeUser();
+    let item = { externalId: "42", title: "Source title", updatedAt: "2026-01-01T00:00:00Z",
+      url: "https://tools.greenhatsec.com/exponential/tasks/42" };
+    await user.importTasks("exponential", "Exponential", [item], true);
+    let edited = await user.updateTask("exponential:42", { status: "done", priority: "high", tag: "Personal" });
+    let migratedItem = { ...item, url: "https://pm.greenhatsec.com/exponential/tasks/42" };
+    let synced = await user.importTasks("exponential", "GreenPM", [migratedItem], true);
+    expect(synced).toEqual({ created: 0, updated: 1, removed: 0, kept: 0 });
+    expect((await user.listTasks())[0]).toMatchObject({ ...edited, url: migratedItem.url,
+      sourceLabel: "GreenPM", updatedAt: expect.any(Date) });
+    expect(await user.importTasks("exponential", "GreenPM", [migratedItem], true))
+        .toEqual({ created: 0, updated: 0, removed: 0, kept: 1 });
+  });
+
   it("mirrors a record in place, so a later sync from that source updates rather than duplicates", async () => {
     let user = await makeUser();
     let added = await user.mirrorTask("crm", "Green Hat CRM", {

@@ -38,8 +38,15 @@ describe('ModuleRail', () => {
     const [os, ...tools] = links
     expect(os.getAttribute('href')).toBe('/')
     expect(os.getAttribute('aria-current')).toBe('page')
+    expect(tools.map((tool) => tool.getAttribute('href'))).toEqual([
+      `${GREENHAT_TOOLS_ORIGIN}/daisy-notes`,
+      'https://pm.greenhatsec.com',
+      `${GREENHAT_TOOLS_ORIGIN}/greenbooks`,
+      `${GREENHAT_TOOLS_ORIGIN}/greenspot`,
+      `${GREENHAT_TOOLS_ORIGIN}/greentype`,
+    ])
+    expect(container.querySelector('[data-testid="module-rail-item-exponential"]')?.getAttribute('aria-label')).toBe('GreenPM')
     for (const tool of tools) {
-      expect(tool.getAttribute('href')).toMatch(new RegExp(`^${GREENHAT_TOOLS_ORIGIN}/`))
       expect(tool.hasAttribute('aria-current')).toBe(false)
       expect(tool.querySelector('img')?.getAttribute('src')).toMatch(/^\/modules\//)
     }
