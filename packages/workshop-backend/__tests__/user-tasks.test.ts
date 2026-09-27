@@ -124,7 +124,7 @@ describe("UserDurableObject tasks", () => {
     expect(tasks.find(t => t.id === "crm:1")!.title).toBe("Call Archie back");
 
     // Another source is not affected by the CRM's replace.
-    await user.importTasks("exponential", "Exponential", [{ externalId: "9", title: "Ship v2" }], true);
+    await user.importTasks("exponential", "GreenPM", [{ externalId: "9", title: "Ship v2" }], true);
     await user.importTasks("crm", "Green Hat CRM", [], true);
     expect((await user.listTasks()).map(t => t.id).toSorted()).toEqual([own.id, "exponential:9"].toSorted());
   });
@@ -146,13 +146,16 @@ describe("UserDurableObject tasks", () => {
     expect((await user.listTasks())[0].status).toBe("open");
   });
 
-  it("persists GreenPM source metadata without losing a local task edit", async () => {
+  it.each([
+    ["https://tools.greenhatsec.com/exponential/tasks/42", "Exponential"],
+    ["https://pm.greenhatsec.com/exponential/tasks/42", "GreenPM"],
+  ])("migrates %s to GreenPM source metadata without losing a local task edit", async (url, sourceLabel) => {
     let user = await makeUser();
     let item = { externalId: "42", title: "Source title", updatedAt: "2026-01-01T00:00:00Z",
-      url: "https://tools.greenhatsec.com/exponential/tasks/42" };
-    await user.importTasks("exponential", "Exponential", [item], true);
+      url };
+    await user.importTasks("exponential", sourceLabel, [item], true);
     let edited = await user.updateTask("exponential:42", { status: "done", priority: "high", tag: "Personal" });
-    let migratedItem = { ...item, url: "https://pm.greenhatsec.com/exponential/tasks/42" };
+    let migratedItem = { ...item, url: "https://pm.greenhatsec.com/tasks/42" };
     let synced = await user.importTasks("exponential", "GreenPM", [migratedItem], true);
     expect(synced).toEqual({ created: 0, updated: 1, removed: 0, kept: 0 });
     expect((await user.listTasks())[0]).toMatchObject({ ...edited, url: migratedItem.url,
