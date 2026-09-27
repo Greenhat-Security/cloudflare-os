@@ -193,8 +193,10 @@ export function applyTaskPatch(task: TaskRecord, patch: TaskPatch, now: Date): T
  * The source system is the authority on its own tasks, so by default its version replaces what
  * is here. The one exception is a user who edited the task in the OS (marked it done, moved its
  * date) after the source last touched it: when the importer dates its records, that newer local
- * edit is kept, so a nightly sync does not quietly undo the afternoon's work. An importer that
- * sends no `updatedAt` always wins, which is the documented behaviour of the endpoint.
+ * edit is kept, so a nightly sync does not quietly undo the afternoon's work. Source-owned links
+ * and labels can still change without overwriting that edit, unless the source revision is older
+ * than the one already stored. An importer that sends no `updatedAt` always wins, which is the
+ * documented behaviour of the endpoint.
  */
 export function reconcileImportedTask(
     existing: TaskRecord | undefined, id: string, source: string, sourceLabel: string | null,
@@ -205,7 +207,11 @@ export function reconcileImportedTask(
   }
   if (existing?.localEditedAt && sourceUpdatedAt &&
       existing.localEditedAt.valueOf() >= sourceUpdatedAt.valueOf()) {
-    return null;
+    if (existing.sourceUpdatedAt && sourceUpdatedAt < existing.sourceUpdatedAt) return null;
+    let url = normalizeTaskUrl(item.url);
+    if (existing.url === url && existing.sourceLabel === sourceLabel &&
+        existing.sourceUpdatedAt?.valueOf() === sourceUpdatedAt.valueOf()) return null;
+    return { ...existing, url, sourceLabel, sourceUpdatedAt, updatedAt: now };
   }
   let status: TaskStatus = item.status ?? "open";
   let next: TaskRecord = {

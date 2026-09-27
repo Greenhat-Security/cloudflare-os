@@ -121,15 +121,64 @@ describe("reconcileImportedTask", () => {
   });
 
   it("keeps a local edit that is newer than the source's own timestamp", () => {
-    let existing = reconcileImportedTask(undefined, "crm:42", "crm", null, item, T0)!;
-    let edited = applyTaskPatch(existing, { status: "done" }, T1);
     let stale = { ...item, updatedAt: "2026-09-17T09:00:00Z" };
+    let existing = reconcileImportedTask(undefined, "crm:42", "crm", null, stale, T0)!;
+    let edited = applyTaskPatch(existing, { status: "done" }, T1);
     expect(reconcileImportedTask(edited, "crm:42", "crm", null, stale, T2)).toBeNull();
     let fresh = { ...item, updatedAt: "2026-09-18T01:00:00Z", title: "Renamed in the CRM" };
     let synced = reconcileImportedTask(edited, "crm:42", "crm", null, fresh, T2)!;
     expect(synced.title).toBe("Renamed in the CRM");
     expect(synced.status).toBe("open");
     expect(synced.sourceUpdatedAt).toEqual(new Date("2026-09-18T01:00:00Z"));
+  });
+
+  it("refreshes GreenPM links and labels at the same source revision without overwriting local edits", () => {
+    let sourceItem = { ...item, updatedAt: T0.toISOString(),
+      url: "https://tools.greenhatsec.com/exponential/tasks/42" };
+    let existing = reconcileImportedTask(undefined, "exponential:42", "exponential",
+        "Exponential", sourceItem, T0)!;
+    let edited = applyTaskPatch(existing, { title: "Local title", notes: "Local notes", status: "done",
+      priority: "high", dueDate: "2026-09-25", tag: "Personal" }, T1);
+    let migratedItem = { ...sourceItem, url: "https://pm.greenhatsec.com/exponential/tasks/42" };
+    let migrated = reconcileImportedTask(edited, "exponential:42", "exponential",
+        "GreenPM", migratedItem, T2)!;
+    expect(migrated).toEqual({ ...edited, url: migratedItem.url, sourceLabel: "GreenPM", updatedAt: T2 });
+    expect(edited.url).toBe(sourceItem.url);
+    expect(reconcileImportedTask(migrated, "exponential:42", "exponential", "GreenPM",
+        migratedItem, new Date(T2.valueOf() + 60_000))).toBeNull();
+  });
+
+  it("keeps newer source metadata when an out-of-order feed arrives during a local edit", () => {
+    let existing = reconcileImportedTask(undefined, "crm:42", "crm", "Old CRM",
+        { ...item, updatedAt: T0.toISOString() }, T0)!;
+    let edited = applyTaskPatch(existing, { priority: "high", tag: "Personal" }, T1);
+    let metadataTime = "2026-09-17T12:00:00Z";
+    let migratedItem = { ...item, updatedAt: metadataTime, url: "https://crm.greenhatsec.com/new-tasks/42" };
+    let migrated = reconcileImportedTask(edited, "crm:42", "crm", "Green Hat CRM", migratedItem, T2)!;
+    expect(migrated).toEqual({ ...edited, url: migratedItem.url, sourceLabel: "Green Hat CRM",
+      sourceUpdatedAt: new Date(metadataTime), updatedAt: T2 });
+    expect(reconcileImportedTask(migrated, "crm:42", "crm", "Old CRM",
+        { ...item, updatedAt: "2026-09-17T11:00:00Z" }, T2)).toBeNull();
+  });
+
+  it("still rejects unsafe source links while preserving a newer local edit", () => {
+    let existing = reconcileImportedTask(undefined, "crm:42", "crm", null, item, T0)!;
+    let edited = applyTaskPatch(existing, { priority: "high" }, T1);
+    expect(() => reconcileImportedTask(edited, "crm:42", "crm", null,
+        { ...item, updatedAt: T0.toISOString(), url: "javascript:alert(1)" }, T2)).toThrow(/http or https/);
+  });
+
+  it("remembers a newer source revision even when its metadata is unchanged", () => {
+    let existing = reconcileImportedTask(undefined, "crm:42", "crm", "Green Hat CRM",
+        { ...item, updatedAt: T0.toISOString() }, T0)!;
+    let edited = applyTaskPatch(existing, { priority: "high" }, T1);
+    let sourceTime = "2026-09-17T12:00:00Z";
+    let seen = reconcileImportedTask(edited, "crm:42", "crm", "Green Hat CRM",
+        { ...item, updatedAt: sourceTime }, T2)!;
+    expect(seen).toEqual({ ...edited, sourceUpdatedAt: new Date(sourceTime), updatedAt: T2 });
+    expect(reconcileImportedTask(seen, "crm:42", "crm", "Old CRM",
+        { ...item, updatedAt: "2026-09-17T11:00:00Z", url: "https://crm.greenhatsec.com/old/42" }, T2))
+        .toBeNull();
   });
 
   it("carries a source-side completion through and keeps its first completion time", () => {
