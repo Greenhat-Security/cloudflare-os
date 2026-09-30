@@ -4,6 +4,7 @@ import {
   addDays,
   daysBetween,
   describeDueDate,
+  describeDueDateInFull,
   describeTaskSource,
   groupTasks,
   localDateKey,
@@ -49,6 +50,14 @@ describe('date keys', () => {
     expect(describeDueDate('2026-09-19', TODAY).label).toMatch(/^[A-Z][a-z]{2}$/)
     expect(describeDueDate('2026-10-05', TODAY).label).not.toMatch(/2026/)
     expect(describeDueDate('2027-01-05', TODAY).label).toMatch(/2027/)
+  })
+
+  it('spells a due date out in full with its distance from today', () => {
+    expect(describeDueDateInFull(TODAY, TODAY)).toEqual({ label: expect.stringMatching(/2026.* · today$/), overdue: false })
+    expect(describeDueDateInFull('2026-09-18', TODAY).label).toMatch(/ · tomorrow$/)
+    expect(describeDueDateInFull('2026-09-22', TODAY).label).toMatch(/ · in 5 days$/)
+    expect(describeDueDateInFull('2026-09-16', TODAY)).toEqual({ label: expect.stringMatching(/ · yesterday$/), overdue: true })
+    expect(describeDueDateInFull('2026-09-14', TODAY)).toEqual({ label: expect.stringMatching(/ · 3 days ago$/), overdue: true })
   })
 })
 

@@ -77,6 +77,23 @@ export function describeDueDate(dueDate: string, today: string): { label: string
   return { label, overdue: delta < 0 }
 }
 
+/**
+ * The due date spelled out for a task's details: the whole date and how far it is from today,
+ * e.g. "Thursday, October 1, 2026 · tomorrow". Overdue on the same terms as the row's chip.
+ */
+export function describeDueDateInFull(dueDate: string, today: string): { label: string; overdue: boolean } {
+  const delta = daysBetween(today, dueDate)
+  const date = parseDateKey(dueDate).toLocaleDateString(undefined,
+    { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  const distance =
+    delta === 0 ? 'today'
+      : delta === 1 ? 'tomorrow'
+      : delta === -1 ? 'yesterday'
+      : delta > 0 ? `in ${delta} days`
+      : `${-delta} days ago`
+  return { label: `${date} · ${distance}`, overdue: delta < 0 }
+}
+
 function compareTitles(a: TaskInfo, b: TaskInfo): number {
   return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
 }

@@ -1,4 +1,5 @@
-import { DropdownMenu } from '@cloudflare/kumo'
+import { useRef, useState } from 'react'
+import { DropdownMenu, Tooltip } from '@cloudflare/kumo'
 import {
   ArrowSquareOut,
   CalendarBlank,
@@ -14,16 +15,9 @@ import {
 import { OS_TASK_SOURCE, type TaskInfo, type TaskPatch, type TaskPriority } from '@gadgets/workshop-shared/api'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from '../components/menuStyles'
 import { addDays, describeDueDate, describeTaskSource } from './taskGrouping'
+import { PRIORITY_CLASS, PRIORITY_LABEL } from './taskPriority'
 
-const PRIORITY_LABEL: Record<TaskPriority, string> = { high: 'High', medium: 'Medium', low: 'Low' }
-
-// The flag's colour is the priority's whole meaning at a glance: red, amber, blue, as in the
-// reference design.
-const PRIORITY_CLASS: Record<TaskPriority, string> = {
-  high: 'text-kumo-danger',
-  medium: 'text-kumo-warning',
-  low: 'text-kumo-info',
-}
+const isCutOff = (element: HTMLElement | null) => element !== null && element.scrollWidth > element.clientWidth
 
 const PRIORITY_CHOICES: (TaskPriority | null)[] = ['high', 'medium', 'low', null]
 
@@ -42,13 +36,15 @@ function Chip({ children, tone = 'default' }: { children: React.ReactNode; tone?
 
 /**
  * One task (Green Hat fork): a round checkbox, the title, small chips for when it is due and what
- * it is about, the priority flag, and an overflow menu with everything else. Imported tasks say
- * where they came from and can be opened there.
+ * it is about, the priority flag, and an overflow menu with everything else. Clicking the title or
+ * its chips opens the task's details. Imported tasks say where they came from and can be opened
+ * there.
  */
 export default function TaskRow({
   task,
   today,
   onToggle,
+  onOpen,
   onEdit,
   onPatch,
   onDelete,
@@ -56,6 +52,7 @@ export default function TaskRow({
   task: TaskInfo
   today: string
   onToggle: (task: TaskInfo) => void
+  onOpen: (task: TaskInfo) => void
   onEdit: (task: TaskInfo) => void
   onPatch: (task: TaskInfo, patch: TaskPatch) => void
   onDelete: (task: TaskInfo) => void
@@ -63,6 +60,8 @@ export default function TaskRow({
   const done = task.status === 'done'
   const due = task.dueDate === null ? null : describeDueDate(task.dueDate, today)
   const imported = task.source !== OS_TASK_SOURCE
+  const titleRef = useRef<HTMLSpanElement>(null)
+  const [fullTitleShown, setFullTitleShown] = useState(false)
 
   return (
     <li
@@ -85,30 +84,31 @@ export default function TaskRow({
         <Check size={11} weight="bold" />
       </button>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span
-            className={[
-              'truncate text-[13px] leading-[18px] tracking-[-0.25px]',
-              done ? 'text-kumo-inactive line-through' : 'text-kumo-default',
-            ].join(' ')}
-          >
-            {task.title}
-          </span>
-          {task.url && (
-            <a
-              href={task.url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Open in ${describeTaskSource(task)}`}
-              title={`Open in ${describeTaskSource(task)}`}
-              className="shrink-0 text-kumo-inactive opacity-0 transition-opacity hover:text-kumo-default group-hover:opacity-100 focus:opacity-100"
-            >
-              <ArrowSquareOut size={13} />
-            </a>
-          )}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={() => onOpen(task)}
+        className="min-w-0 flex-1 cursor-pointer text-left"
+      >
+        <Tooltip
+          content={<span className="block max-w-sm break-words">{task.title}</span>}
+          open={fullTitleShown}
+          // Only a title the row has cut short gets the tooltip; a whole one would just repeat itself.
+          onOpenChange={(open) => setFullTitleShown(open && isCutOff(titleRef.current))}
+          className="cursor-pointer"
+          render={
+            <span
+              ref={titleRef}
+              className={[
+                'block truncate text-[13px] leading-[18px] tracking-[-0.25px]',
+                done ? 'text-kumo-inactive line-through' : 'text-kumo-default',
+              ].join(' ')}
+            />
+          }
+        >
+          {task.title}
+        </Tooltip>
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
           {due && (
             <Chip tone={due.overdue && !done ? 'danger' : 'default'}>
               <CalendarBlank size={12} />
@@ -135,8 +135,21 @@ export default function TaskRow({
               Not saved to {describeTaskSource(task)}
             </span>
           )}
-        </div>
-      </div>
+        </span>
+      </button>
+
+      {task.url && (
+        <a
+          href={task.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open in ${describeTaskSource(task)}`}
+          title={`Open in ${describeTaskSource(task)}`}
+          className="shrink-0 text-kumo-inactive opacity-0 transition-opacity hover:text-kumo-default group-hover:opacity-100 focus:opacity-100"
+        >
+          <ArrowSquareOut size={13} />
+        </a>
+      )}
 
       {task.priority && (
         <span

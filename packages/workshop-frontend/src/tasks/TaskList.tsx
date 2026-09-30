@@ -13,6 +13,7 @@ import {
 import type { TaskInfo, TaskPatch } from '@gadgets/workshop-shared/api'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from '../components/menuStyles'
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog'
+import TaskDetailsDialog from './TaskDetailsDialog'
 import TaskEditorDialog, { type TaskEditorValues } from './TaskEditorDialog'
 import TaskRow from './TaskRow'
 import {
@@ -161,9 +162,13 @@ export default function TaskList() {
   const [collapsed, setCollapsed] = useState<Record<TaskGroupId, boolean>>(readCollapsed)
   const [editing, setEditing] = useState<TaskInfo | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
+  // By id, so the open details follow the task through every change made to it meanwhile.
+  const [detailsId, setDetailsId] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [clearing, setClearing] = useState(false)
 
   const groups = useMemo(() => groupTasks(tasks, today, horizon), [tasks, today, horizon])
+  const detailsTask = detailsId === null ? null : tasks.find((t) => t.id === detailsId) ?? null
   const horizonLabel = TASK_HORIZONS.find((h) => h.id === horizon)?.label ?? 'Today'
 
   const chooseHorizon = useCallback((next: TaskHorizon) => {
@@ -200,6 +205,16 @@ export default function TaskList() {
   const markAllDone = useCallback((group: TaskGroup) => {
     for (const task of group.tasks) void updateTask(task, { status: 'done' })
   }, [updateTask])
+
+  const openDetails = (task: TaskInfo) => {
+    setDetailsId(task.id)
+    setDetailsOpen(true)
+  }
+
+  const editFromDetails = (task: TaskInfo) => {
+    setDetailsOpen(false)
+    openEditor(task)
+  }
 
   const empty = !loading && !failed && tasks.length === 0
 
@@ -289,6 +304,7 @@ export default function TaskList() {
                             task={task}
                             today={today}
                             onToggle={toggleDone}
+                            onOpen={openDetails}
                             onEdit={openEditor}
                             onPatch={patch}
                             onDelete={(t) => void deleteTask(t)}
@@ -304,6 +320,14 @@ export default function TaskList() {
         )}
       </div>
 
+      <TaskDetailsDialog
+        open={detailsOpen}
+        task={detailsTask}
+        today={today}
+        onOpenChange={setDetailsOpen}
+        onToggle={toggleDone}
+        onEdit={editFromDetails}
+      />
       <TaskEditorDialog open={editorOpen} task={editing} onOpenChange={setEditorOpen} onSubmit={submitEditor} />
       <DeleteConfirmationDialog
         open={clearing}
