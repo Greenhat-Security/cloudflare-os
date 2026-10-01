@@ -260,7 +260,8 @@ body {
   top: calc(var(--app-top) + env(safe-area-inset-top));
   right: env(safe-area-inset-right);
   bottom: calc(var(--app-bottom) + env(safe-area-inset-bottom));
-  left: env(safe-area-inset-left);
+  /* Authenticated fullscreen gadgets retain the platform rail; public flows default to no rail. */
+  left: max(var(--greenhat-navigation-width, 0px), env(safe-area-inset-left));
 }
 
 @layer utilities {

@@ -174,7 +174,7 @@ function AuthenticatedShell({
   return (
     <>
       <AccountSelectionModal />
-      <div className="flex h-full min-h-0 w-full overflow-hidden bg-kumo-base pl-16">
+      <div className="flex h-full min-h-0 w-full overflow-hidden bg-kumo-base pl-16 [--greenhat-navigation-width:64px]">
         <ModuleRail />
         <div className="h-full min-h-0 min-w-0 flex-1">
           {fullscreen ? (
