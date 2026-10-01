@@ -50,7 +50,7 @@ const CSS = `
   :host { all: initial; position: fixed; inset: 0 auto 0 0; width: 64px; height: 100vh; height: 100dvh; z-index: var(--greenhat-navigation-z-index, 30); color-scheme: light; font: 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   *, *::before, *::after { box-sizing: border-box; }
   nav { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b9ccb8 transparent; background: #f4f8f2; border-right: 1px solid #d8e3d5; padding: 10px 5px max(12px, env(safe-area-inset-bottom)); }
-  .brand { width: 42px; height: 42px; margin: 0 auto 10px; display: grid; place-items: center; border-radius: 13px; background: #62ac4a; color: #fff; font-size: 13px; font-weight: 750; letter-spacing: .02em; user-select: none; }
+  .brand { width: 42px; height: 42px; margin: 0 auto 10px; display: grid; place-items: center; border-radius: 13px; background: #62ac4a; color: #173c19; font-size: 13px; font-weight: 750; letter-spacing: .02em; user-select: none; }
   section { margin: 0; padding: 0; }
   section + section { margin-top: 9px; padding-top: 7px; border-top: 1px solid #dce7d8; }
   h2 { margin: 0 0 3px; text-align: center; color: #52654d; font-size: 9px; font-weight: 750; line-height: 16px; letter-spacing: .035em; text-transform: uppercase; }
