@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Green Hat Security.
 // SPDX-License-Identifier: MIT
-/** Greenhat navigation v1.1.0. Keep this asset identical across the app repositories.
+/** Greenhat navigation v1.2.0. Keep this asset identical across the app repositories.
  * Mount inside the signed-in app shell; the host app reserves 64px on the left.
  * This component only provides links. Each destination retains its own access rules.
  */
@@ -75,20 +75,103 @@ const ICONS = {
 };
 
 const CSS = `
-  :host { all: initial; position: fixed; inset: 0 auto 0 0; width: 64px; height: 100vh; height: 100dvh; z-index: var(--greenhat-navigation-z-index, 30); color-scheme: light; font: 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  :host {
+    all: initial; position: fixed; inset: 0 auto 0 0; width: 64px; height: 100vh; height: 100dvh;
+    z-index: var(--greenhat-navigation-z-index, 30); color-scheme: inherit;
+    font: 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --rail-background: light-dark(#f4f8f2, #0b2222);
+    --rail-border: light-dark(#d8e3d5, #214242);
+    --rail-text: light-dark(#46684d, #c4f1da);
+    --rail-heading: light-dark(#52654d, #8bb6a4);
+    --rail-hover-background: light-dark(#e4efdf, #10302e);
+    --rail-hover-text: light-dark(#254d2d, #f2fff8);
+    --rail-active-background: light-dark(#dcefd3, #16433e);
+    --rail-active-text: light-dark(#286b29, #7de0ae);
+    --rail-accent: light-dark(#32722f, #00bb66);
+    --rail-brand-background: light-dark(#62ac4a, #16433e);
+    --rail-brand-text: light-dark(#123227, #c4f1da);
+    --rail-tooltip-background: light-dark(#243e29, #10302e);
+    --rail-tooltip-text: light-dark(#fff, #f2fff8);
+    --rail-tooltip-border: light-dark(#314b34, #2f5a51);
+  }
+  /* Inherited app tokens repaint with native theme changes, including inside this shadow root. */
+  :host([current-app="crm"]) {
+    --rail-background: var(--t-background-secondary, #0b2222);
+    --rail-border: var(--t-border-color-light, #214242);
+    --rail-text: var(--t-font-color-secondary, #c4f1da);
+    --rail-heading: var(--t-font-color-tertiary, #8bb6a4);
+    --rail-hover-background: var(--t-background-tertiary, #10302e);
+    --rail-hover-text: var(--t-font-color-primary, #f2fff8);
+    --rail-active-background: var(--t-background-quaternary, #16433e);
+    --rail-active-text: var(--t-accent-tertiary, #7de0ae);
+    --rail-accent: var(--t-accent-primary, #00bb66);
+    --rail-brand-background: var(--rail-active-background);
+    --rail-brand-text: var(--rail-text);
+    --rail-tooltip-background: var(--rail-hover-background);
+    --rail-tooltip-text: var(--rail-hover-text);
+    --rail-tooltip-border: var(--t-border-color-medium, #2f5a51);
+  }
+  :host([current-app="grc"]) {
+    --rail-background: var(--color-level-1, light-dark(#fff, #132018));
+    --rail-border: var(--color-border-solid, light-dark(#e7ede7, #26332b));
+    --rail-text: var(--color-txt-secondary, light-dark(#586b5d, #a9bbad));
+    --rail-heading: var(--rail-text);
+    --rail-hover-background: var(--color-subtle-hover, light-dark(#0f8a3d14, #dcf0de12));
+    --rail-hover-text: var(--color-txt-primary, light-dark(#0f1a12, #f4f7f2));
+    --rail-active-background: var(--color-active, light-dark(#dcf0de, #2e9a4e26));
+    --rail-active-text: var(--color-txt-accent, light-dark(#0f7a35, #62ac4a));
+    --rail-accent: var(--color-border-active, light-dark(#0f8a3d, #f4f7f2));
+    --rail-brand-background: var(--rail-active-background);
+    --rail-brand-text: var(--rail-hover-text);
+    --rail-tooltip-background: var(--color-level-2, light-dark(#fff, #1b2a21));
+    --rail-tooltip-text: var(--rail-hover-text);
+    --rail-tooltip-border: var(--rail-border);
+  }
+  :host([current-app="os"]) {
+    --rail-background: var(--color-kumo-elevated, light-dark(#fff, #0b2222));
+    --rail-border: var(--color-kumo-line, light-dark(#13201814, #214242));
+    --rail-text: var(--text-color-kumo-subtle, light-dark(#586b5d, #8bb6a4));
+    --rail-heading: var(--rail-text);
+    --rail-hover-background: var(--color-kumo-fill, light-dark(#e7ede7, #10302e));
+    --rail-hover-text: var(--text-color-kumo-default, light-dark(#132018, #f2fff8));
+    --rail-active-background: var(--color-kumo-fill-hover, light-dark(#d3dfd3, #16433e));
+    --rail-active-text: var(--text-color-kumo-brand, light-dark(#0f8a3d, #7de0ae));
+    --rail-accent: var(--color-kumo-brand, light-dark(#0f8a3d, #00bb66));
+    --rail-brand-background: var(--rail-active-background);
+    --rail-brand-text: var(--rail-hover-text);
+    --rail-tooltip-background: var(--color-kumo-tint, light-dark(#f4f7f2, #10302e));
+    --rail-tooltip-text: var(--rail-hover-text);
+    --rail-tooltip-border: var(--rail-border);
+  }
+  :host([current-app="sign"]) {
+    --rail-background: hsl(var(--background, 180 51.52% 6.47%));
+    --rail-border: hsl(var(--border, 180 33.33% 19.41%));
+    --rail-text: hsl(var(--muted-foreground, 154.88 22.75% 62.94%));
+    --rail-heading: var(--rail-text);
+    --rail-hover-background: hsl(var(--muted, 176.25 50% 12.55%));
+    --rail-hover-text: hsl(var(--foreground, 147.69 100% 97.45%));
+    --rail-active-background: color-mix(in srgb, hsl(var(--primary, 152.73 100% 36.67%)) 18%, var(--rail-background));
+    --rail-active-text: hsl(var(--primary, 152.73 100% 36.67%));
+    --rail-accent: var(--rail-active-text);
+    --rail-brand-background: var(--rail-active-background);
+    --rail-brand-text: var(--rail-hover-text);
+    --rail-tooltip-background: hsl(var(--popover, 180 51.11% 8.82%));
+    --rail-tooltip-text: var(--rail-hover-text);
+    --rail-tooltip-border: var(--rail-border);
+  }
   *, *::before, *::after { box-sizing: border-box; }
-  nav { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b9ccb8 transparent; background: #f4f8f2; border-right: 1px solid #d8e3d5; padding: 10px 5px max(12px, env(safe-area-inset-bottom)); }
-  .brand { width: 42px; height: 42px; margin: 0 auto 10px; display: grid; place-items: center; border-radius: 13px; background: #62ac4a; color: #123227; font-size: 13px; font-weight: 750; letter-spacing: .02em; user-select: none; }
+  nav { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--rail-border) transparent; background: var(--greenhat-navigation-background, var(--rail-background)); border-right: 1px solid var(--rail-border); padding: 10px 5px max(12px, env(safe-area-inset-bottom)); }
+  .brand { width: 42px; height: 42px; margin: 0 auto 10px; display: grid; place-items: center; border-radius: 13px; background: var(--rail-brand-background); color: var(--rail-brand-text); font-size: 13px; font-weight: 750; letter-spacing: .02em; user-select: none; }
   section { margin: 0; padding: 0; }
-  section + section { margin-top: 9px; padding-top: 7px; border-top: 1px solid #dce7d8; }
-  h2 { margin: 0 0 3px; text-align: center; color: #52654d; font-size: 9px; font-weight: 750; line-height: 16px; letter-spacing: .035em; text-transform: uppercase; }
-  a { position: relative; display: grid; place-items: center; width: 44px; height: 44px; margin: 0 auto; border-radius: 10px; color: #46684d; text-decoration: none; outline-offset: -2px; -webkit-tap-highlight-color: transparent; }
-  a:hover { background: #e4efdf; color: #254d2d; }
-  a[aria-current="page"] { background: #dcefd3; color: #286b29; }
-  a[aria-current="page"]::before { content: ""; position: absolute; left: -4px; top: 12px; height: 20px; width: 3px; border-radius: 3px; background: #62ac4a; }
-  a:focus-visible { outline: 2px solid #32722f; background: #e4efdf; }
+  section + section { margin-top: 9px; padding-top: 7px; border-top: 1px solid var(--rail-border); }
+  h2 { margin: 0 0 3px; text-align: center; color: var(--rail-heading); font-size: 9px; font-weight: 750; line-height: 16px; letter-spacing: .035em; text-transform: uppercase; }
+  a { position: relative; display: grid; place-items: center; width: 44px; height: 44px; margin: 0 auto; border-radius: 10px; color: var(--rail-text); text-decoration: none; outline-offset: -2px; -webkit-tap-highlight-color: transparent; }
+  a:hover { background: var(--rail-hover-background); color: var(--rail-hover-text); }
+  a[aria-current="page"] { background: var(--rail-active-background); color: var(--rail-active-text); }
+  a[aria-current="page"]::before { content: ""; position: absolute; left: -4px; top: 12px; height: 20px; width: 3px; border-radius: 3px; background: var(--rail-accent); }
+  a:focus-visible { outline: 2px solid var(--rail-accent); background: var(--rail-hover-background); }
   svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-  .tooltip { position: fixed; left: 72px; top: 0; z-index: 1; width: max-content; max-width: min(300px, calc(100vw - 84px)); padding: 9px 12px; border: 1px solid #314b34; border-radius: 8px; background: #243e29; color: #fff; box-shadow: 0 4px 14px #17271926; font-size: 12px; font-weight: 550; line-height: 1.45; overflow-wrap: anywhere; }
+  .tooltip { position: fixed; left: 72px; top: 0; z-index: 1; width: max-content; max-width: min(300px, calc(100vw - 84px)); padding: 9px 12px; border: 1px solid var(--rail-tooltip-border); border-radius: 8px; background: var(--rail-tooltip-background); color: var(--rail-tooltip-text); box-shadow: 0 4px 14px #00000026; font-size: 12px; font-weight: 550; line-height: 1.45; overflow-wrap: anywhere; }
   .tooltip[hidden] { display: none; }
   @media (forced-colors: active) { nav { border-right: 1px solid CanvasText; } a[aria-current="page"] { outline: 2px solid Highlight; } }
 `;
