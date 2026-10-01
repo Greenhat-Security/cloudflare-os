@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Green Hat Security.
 // SPDX-License-Identifier: MIT
-/** Greenhat navigation v1.0.0. Keep this asset identical across the app repositories.
+/** Greenhat navigation v1.1.0. Keep this asset identical across the app repositories.
  * Mount inside the signed-in app shell; the host app reserves 64px on the left.
  * This component only provides links. Each destination retains its own access rules.
  */
@@ -28,6 +28,34 @@ export const GREENHAT_NAVIGATION = [
     { id: 'qualitative-risk-generator', label: 'Qualitative Risk Generator', href: 'https://tools.greenhatsec.com/qualitative-risk-generator', icon: 'risk' },
   ] },
 ];
+
+// Grant IDs remain compatible with the existing admin access controls.
+const MODULE_KEYS = {
+  crm: 'greenspot', cal: 'calendar', type: 'greentype', pm: 'exponential',
+  sign: 'sign', grc: 'grc', 'pdf-merger': 'tools', 'image-to-pdf': 'tools',
+  ledger: 'ledger', 'soc2-section-3-qa': 'soc2', 'soc2-section-3-generator': 'soc2',
+  cisa: 'cisa', 'qualitative-risk-generator': 'security',
+};
+
+/** Fail closed on missing/malformed authority data. Native grants come only from the host BFF. */
+export function visibleNavigation(payload) {
+  if (!payload || typeof payload.restricted !== 'boolean' || !Array.isArray(payload.modules) ||
+      payload.modules.length > 100 || !payload.modules.every(key => typeof key === 'string') ||
+      typeof payload.user?.id !== 'string' || !payload.user.id) return [];
+  const unrestricted = payload.restricted === false && payload.modules.includes('*');
+  const grants = new Set(payload.restricted ? payload.modules.filter(key => key !== '*') : []);
+  // CRM and OS also require the existing Green Hat staff entry policy.
+  const staffEmail = typeof payload.user.email === 'string' && /@greenhatsec\.com$/i.test(payload.user.email);
+  const native = new Set(Array.isArray(payload.nativeModules) ? payload.nativeModules : []);
+  const denied = new Set(Array.isArray(payload.deniedModules) ? payload.deniedModules : []);
+  return GREENHAT_NAVIGATION.map(group => ({ ...group, items: group.items.filter(item => {
+    if (denied.has(MODULE_KEYS[item.id]) || denied.has(item.id)) return false;
+    if (item.id === 'os') return native.has('os') || (unrestricted && staffEmail);
+    if (item.id === 'grc' && native.has('grc')) return true;
+    if (item.id === 'crm' && !staffEmail) return false;
+    return unrestricted || grants.has(MODULE_KEYS[item.id]);
+  }) })).filter(group => group.items.length);
+}
 
 const ICONS = {
   contacts: [{"tag":"path","attributes":{"d":"M16 4h3v17H5V4h3M9 2h6v4H9z"}},{"tag":"circle","attributes":{"cx":"12","cy":"11","r":"2.5"}},{"tag":"path","attributes":{"d":"M8 19v-1a4 4 0 0 1 8 0v1"}}],
@@ -67,7 +95,7 @@ const CSS = `
 
 if (typeof window !== 'undefined' && !customElements.get('greenhat-navigation')) {
   class GreenhatNavigation extends HTMLElement {
-    static get observedAttributes() { return ['current-app', 'current-path', 'nonce']; }
+    static get observedAttributes() { return ['current-app', 'current-path', 'nonce', 'identity-key']; }
 
     constructor() {
       super();
@@ -75,6 +103,13 @@ if (typeof window !== 'undefined' && !customElements.get('greenhat-navigation'))
       this._hideTimer = null;
       this._refresh = () => { this.updateActive(); this.hideTooltip(); };
       this._hide = () => this.hideTooltip();
+      this._accessGroups = [];
+      this._accessController = null;
+      this._checkAccess = () => { void this.refreshAccess(); };
+      this._visibility = () => {
+        if (document.visibilityState === 'visible') this._checkAccess();
+        else this.clearAccess();
+      };
     }
 
     connectedCallback() {
@@ -82,20 +117,92 @@ if (typeof window !== 'undefined' && !customElements.get('greenhat-navigation'))
       this.updateActive();
       window.addEventListener('popstate', this._refresh);
       window.addEventListener('resize', this._hide);
+      window.addEventListener('focus', this._checkAccess);
+      window.addEventListener('pageshow', this._checkAccess);
+      document.addEventListener('visibilitychange', this._visibility);
+      this._accessTimer = setInterval(this._checkAccess, 60_000);
+      this._checkAccess();
     }
 
     disconnectedCallback() {
       clearTimeout(this._hideTimer);
       window.removeEventListener('popstate', this._refresh);
       window.removeEventListener('resize', this._hide);
+      window.removeEventListener('focus', this._checkAccess);
+      window.removeEventListener('pageshow', this._checkAccess);
+      document.removeEventListener('visibilitychange', this._visibility);
+      clearInterval(this._accessTimer);
+      this.clearAccess();
     }
 
     attributeChangedCallback(name) {
       if (name === 'nonce') {
         const style = this.shadowRoot.querySelector('style');
         if (style) style.nonce = this.nonce || this.getAttribute('nonce') || window.__webpack_nonce__ || '';
+      } else if (name === 'identity-key') {
+        this.clearAccess();
+        if (this.isConnected) this._checkAccess();
       } else {
         this.updateActive();
+      }
+    }
+
+    clearAccess() {
+      this._accessController?.abort();
+      this._accessController = null;
+      this._accessGroups = [];
+      this.hideTooltip();
+      this.shadowRoot.replaceChildren();
+      this.render();
+    }
+
+    async refreshAccess() {
+      if (!this.isConnected || document.visibilityState === 'hidden' || this._accessController) return;
+      let focusedId = this.shadowRoot.activeElement?.dataset.id;
+      // Do not steal focus if the person moves elsewhere while the lookup is pending.
+      const movedFocus = () => { focusedId = null; };
+      this.clearAccess();
+      for (const event of ['focusin', 'pointerdown', 'keydown']) document.addEventListener(event, movedFocus, true);
+      const controller = new AbortController();
+      this._accessController = controller;
+      // Host authentication and authority lookups can take up to fifteen seconds together.
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const response = await fetch('/api/me/module-access', {
+          credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+          headers: { accept: 'application/json' }, signal: controller.signal,
+        });
+        if (!response.ok || response.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') return;
+        const reader = response.body?.getReader();
+        if (!reader) return;
+        let bytes = 0;
+        let body = '';
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            bytes += value.byteLength;
+            if (bytes > 16_384) { await reader.cancel(); return; }
+            body += decoder.decode(value, { stream: true });
+          }
+          body += decoder.decode();
+        } finally { reader.releaseLock(); }
+        if (controller.signal.aborted || this._accessController !== controller || !this.isConnected) return;
+        this._accessGroups = visibleNavigation(JSON.parse(body));
+        this.shadowRoot.replaceChildren();
+        this.render();
+        this.updateActive();
+        if (focusedId && document.activeElement === document.body) {
+          const link = [...this.shadowRoot.querySelectorAll('a')].find(link => link.dataset.id === focusedId);
+          link?.focus({ preventScroll: true });
+        }
+      } catch {
+        // Unverified access never falls back to the full catalog or a saved account's grants.
+      } finally {
+        clearTimeout(timeout);
+        for (const event of ['focusin', 'pointerdown', 'keydown']) document.removeEventListener(event, movedFocus, true);
+        if (this._accessController === controller) this._accessController = null;
       }
     }
 
@@ -111,7 +218,7 @@ if (typeof window !== 'undefined' && !customElements.get('greenhat-navigation'))
       brand.setAttribute('aria-label', 'Greenhat');
       nav.append(brand);
 
-      for (const [index, group] of GREENHAT_NAVIGATION.entries()) {
+      for (const [index, group] of this._accessGroups.entries()) {
         const section = document.createElement('section');
         const heading = document.createElement('h2');
         heading.id = `group-${index}`;

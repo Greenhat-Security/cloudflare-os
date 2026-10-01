@@ -32,6 +32,7 @@ import { handleClientErrorRequest } from "./client-errors.js";
 import { handleTaskImportRequest, TASK_IMPORT_PATH, TaskImportGateway } from "./tasks-import.js";
 import { normalizeTaskSource, normalizeTaskSourceLabel } from "./tasks.js";
 import { verifyCfAccessJwt } from "./access.js";
+import { handleNavigationAccess } from "./navigation-access.js";
 import { resolveUiFeatureFlags } from "./feature-flags";
 import { serveSiteLogo, SITE_LOGO_PATH } from "./site-logo.js";
 import { createWorkshopLogger } from "./observability";
@@ -851,6 +852,10 @@ export default {
     // OAuth redirect lands on `/gatekeeper/<name>/oauth`); the result is bridged back to the waiting
     // browser via the `attempt` stub from PublicApi.startGatekeeperLogin(). So the backend no longer
     // hosts /auth/* callbacks.
+
+    if (url.pathname === "/api/me/module-access") {
+      return handleNavigationAccess(req, env);
+    }
 
     if (url.pathname === "/api/client-errors") {
       return handleClientErrorRequest(req, env, ctx);
