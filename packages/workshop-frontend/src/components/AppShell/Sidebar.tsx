@@ -55,7 +55,7 @@ export default function Sidebar({
         // Sidebar is the app chrome: a hair greyer than the (lighter) content canvas so the two
         // surfaces read as distinct without a heavy divider.
         'flex h-full flex-col border-r border-kumo-line bg-kumo-elevated',
-        collapsed ? 'w-[56px]' : 'w-[min(320px,100vw)] md:w-[260px]',
+        collapsed ? 'w-[56px]' : 'w-[min(320px,calc(100vw-64px))] md:w-[260px]',
         'shrink-0 transition-[width] duration-200 ease-out',
       ].join(' ')}
     >

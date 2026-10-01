@@ -169,15 +169,13 @@ function AuthenticatedShell({
   //
   // Green Hat fork: the module rail (the other Green Hat tools) sits outside both, at the far left
   // of every signed-in page, the workspace editor included, so switching product never depends on
-  // where in the OS you are. Desktop only, as in the tools.
+  // where in the OS you are, including at mobile widths.
   const fullscreen = isWorkspaceEditor
   return (
     <>
       <AccountSelectionModal />
-      <div className="flex h-full min-h-0 w-full overflow-hidden bg-kumo-base">
-        <div className="hidden h-full shrink-0 md:flex">
-          <ModuleRail />
-        </div>
+      <div className="flex h-full min-h-0 w-full overflow-hidden bg-kumo-base pl-16 [--greenhat-navigation-width:64px]">
+        <ModuleRail />
         <div className="h-full min-h-0 min-w-0 flex-1">
           {fullscreen ? (
             <main className="h-full min-h-0">

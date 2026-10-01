@@ -119,7 +119,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {mobileOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] md:hidden"
+            className="fixed inset-y-0 left-16 right-0 z-40 bg-black/30 backdrop-blur-[1px] md:hidden"
             onClick={() => setMobileOpen(false)}
             aria-hidden="true"
           />
@@ -129,7 +129,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             aria-modal="true"
             aria-label="Primary navigation"
             tabIndex={-1}
-            className="fixed inset-y-0 left-0 z-50 outline-none md:hidden"
+            className="fixed inset-y-0 left-16 z-50 outline-none md:hidden"
           >
             <Sidebar collapsed={false} onToggleCollapsed={() => setMobileOpen(false)} />
           </div>
