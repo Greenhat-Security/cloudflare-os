@@ -30,20 +30,20 @@ export const GREENHAT_NAVIGATION = [
 ];
 
 const ICONS = {
-  contacts: '<path d="M16 4h3v17H5V4h3M9 2h6v4H9z"/><circle cx="12" cy="11" r="2.5"/><path d="M8 19v-1a4 4 0 0 1 8 0v1"/>',
-  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18M8 15h.01M12 15h.01M16 15h.01M8 18h.01M12 18h.01"/>',
-  notes: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5"/>',
-  projects: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16M5.5 8h1M11.5 8h1M17.5 8h1M5.5 12h1M11.5 12h1"/>',
-  signature: '<path d="M11 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5M14 6l4 4M10 14l1-4 8-8 3 3-8 8zM8 17h8"/>',
-  shield: '<path d="M12 3l8 4v5c0 5-8 9-8 9S4 17 4 12V7zM8.5 12l2.5 2.5 4.5-5"/>',
-  monitor: '<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4M7 8l3 2-3 2M13 12h4"/>',
-  merge: '<path d="M8 3H4a1 1 0 0 0-1 1v11h5M16 3h4a1 1 0 0 1 1 1v11h-5M8 7l4 4 4-4M12 3v8"/><rect x="8" y="15" width="8" height="6" rx="1"/>',
-  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="M21 15l-5-5L5 21M3 16l4-4 3 3"/>',
-  ledger: '<path d="M6 3h14v18H6a3 3 0 0 1 0-6h14M6 3a3 3 0 0 0-3 3v12M9 7h7M9 11h5"/>',
-  review: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 14l2.5 2.5L16 11"/>',
-  document: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M12 12v6M9 15h6"/>',
-  study: '<path d="M12 6C9 3 5 3 2 4v15c3-1 7-1 10 2 3-3 7-3 10-2V4c-3-1-7-1-10 2zM12 6v15"/>',
-  risk: '<path d="M10.3 4.3L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0zM12 9v5M12 17h.01"/>',
+  contacts: [{"tag":"path","attributes":{"d":"M16 4h3v17H5V4h3M9 2h6v4H9z"}},{"tag":"circle","attributes":{"cx":"12","cy":"11","r":"2.5"}},{"tag":"path","attributes":{"d":"M8 19v-1a4 4 0 0 1 8 0v1"}}],
+  calendar: [{"tag":"rect","attributes":{"x":"3","y":"5","width":"18","height":"16","rx":"2"}},{"tag":"path","attributes":{"d":"M16 3v4M8 3v4M3 11h18M8 15h.01M12 15h.01M16 15h.01M8 18h.01M12 18h.01"}}],
+  notes: [{"tag":"path","attributes":{"d":"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5"}}],
+  projects: [{"tag":"rect","attributes":{"x":"3","y":"4","width":"18","height":"16","rx":"2"}},{"tag":"path","attributes":{"d":"M9 4v16M15 4v16M5.5 8h1M11.5 8h1M17.5 8h1M5.5 12h1M11.5 12h1"}}],
+  signature: [{"tag":"path","attributes":{"d":"M11 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5M14 6l4 4M10 14l1-4 8-8 3 3-8 8zM8 17h8"}}],
+  shield: [{"tag":"path","attributes":{"d":"M12 3l8 4v5c0 5-8 9-8 9S4 17 4 12V7zM8.5 12l2.5 2.5 4.5-5"}}],
+  monitor: [{"tag":"rect","attributes":{"x":"3","y":"3","width":"18","height":"14","rx":"2"}},{"tag":"path","attributes":{"d":"M8 21h8M12 17v4M7 8l3 2-3 2M13 12h4"}}],
+  merge: [{"tag":"path","attributes":{"d":"M8 3H4a1 1 0 0 0-1 1v11h5M16 3h4a1 1 0 0 1 1 1v11h-5M8 7l4 4 4-4M12 3v8"}},{"tag":"rect","attributes":{"x":"8","y":"15","width":"8","height":"6","rx":"1"}}],
+  image: [{"tag":"rect","attributes":{"x":"3","y":"3","width":"18","height":"18","rx":"2"}},{"tag":"circle","attributes":{"cx":"8","cy":"8","r":"1.5"}},{"tag":"path","attributes":{"d":"M21 15l-5-5L5 21M3 16l4-4 3 3"}}],
+  ledger: [{"tag":"path","attributes":{"d":"M6 3h14v18H6a3 3 0 0 1 0-6h14M6 3a3 3 0 0 0-3 3v12M9 7h7M9 11h5"}}],
+  review: [{"tag":"path","attributes":{"d":"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 14l2.5 2.5L16 11"}}],
+  document: [{"tag":"path","attributes":{"d":"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M12 12v6M9 15h6"}}],
+  study: [{"tag":"path","attributes":{"d":"M12 6C9 3 5 3 2 4v15c3-1 7-1 10 2 3-3 7-3 10-2V4c-3-1-7-1-10 2zM12 6v15"}}],
+  risk: [{"tag":"path","attributes":{"d":"M10.3 4.3L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0zM12 9v5M12 17h.01"}}],
 };
 
 const CSS = `
@@ -124,8 +124,15 @@ if (typeof window !== 'undefined' && !customElements.get('greenhat-navigation'))
           link.dataset.destination = item.href;
           link.href = item.href;
           link.setAttribute('aria-label', item.label);
-          // Only static, source-controlled SVG paths are inserted as markup.
-          link.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[item.icon]}</svg>`;
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('viewBox', '0 0 24 24');
+          svg.setAttribute('aria-hidden', 'true');
+          for (const shape of ICONS[item.icon]) {
+            const element = document.createElementNS('http://www.w3.org/2000/svg', shape.tag);
+            for (const [name, value] of Object.entries(shape.attributes)) element.setAttribute(name, value);
+            svg.append(element);
+          }
+          link.append(svg);
           link.addEventListener('mouseenter', () => this.showTooltip(link));
           link.addEventListener('mouseleave', () => this.scheduleHide());
           link.addEventListener('focus', () => this.showTooltip(link));
